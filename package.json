@@ -43,6 +43,7 @@
 		"vitest-browser-svelte": "^2.1.1"
 	},
 	"dependencies": {
+		"@sqlite.org/sqlite-wasm": "^3.53.0-build1",
 		"daisyui": "^5.7.16"
 	}
 }

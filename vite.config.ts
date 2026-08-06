@@ -10,6 +10,17 @@ export default defineConfig(({ mode }) => {
 
 	return {
 		plugins: [
+			{
+				// Required for opfs
+				name: 'configure-response-headers',
+				configureServer(server) {
+					server.middlewares.use((_req, res, next) => {
+						res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+						res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+						next();
+					});
+				}
+			},
 			tailwindcss(),
 			sveltekit({
 				compilerOptions: {
@@ -25,9 +36,25 @@ export default defineConfig(({ mode }) => {
 			})
 		],
 		server: {
+			// hmr: {
+			// 	headers: {
+			// 		'Cross-Origin-Resource-Policy': 'cross-origin'
+			// 	}
+			// },
+			headers: {
+				'Cross-Origin-Opener-Policy': 'same-origin',
+				'Cross-Origin-Embedder-Policy': 'require-corp'
+			},
 			cors: {
 				origin: env.VITE_NAVIDROME_URL || true
 			}
+		},
+		optimizeDeps: {
+			exclude: ['@sqlite.org/sqlite-wasm']
+		},
+		worker: {
+			format: 'es',
+			plugins: () => []
 		},
 		test: {
 			expect: { requireAssertions: true },

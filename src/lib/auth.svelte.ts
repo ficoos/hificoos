@@ -12,5 +12,7 @@ export function getCredentials() {
 
 export function setCredentials(newCreds: Credentials) {
 	credentials.set(newCreds);
+    // TODO: I'm saving the credentials raw to local storage.
+    // Is there a way to make it auto delete?
 	localStorage.setItem(STORAGE_KEY, JSON.stringify(newCreds));
 }
