@@ -7,13 +7,36 @@
 // Ensures that the `$service-worker` import has proper type definitions
 /// <reference types="@sveltejs/kit" />
 
+import sqlite3InitModule, {
+	Database as SqliteDatabase,
+	type BindingSpec,
+	type Sqlite3Static
+} from '@sqlite.org/sqlite-wasm';
+import { Client, type Credentials, type SearchResult3 } from './navidrome.ts';
+import type { Database } from './database_types.ts';
+import { SCHEMA } from './database_types.ts';
+import {
+	CompiledQuery,
+	ControlledTransaction,
+	Kysely,
+	SqliteAdapter,
+	SqliteIntrospector,
+	SqliteQueryCompiler,
+	type AbortableOperationOptions,
+	type DatabaseConnection,
+	type Driver,
+	type InsertObject,
+	type QueryResult,
+	type TransactionSettings
+} from 'kysely';
+
 const ctx = self as unknown as SharedWorkerGlobalScope;
 
 export type WorkerCommand = 'SYNC';
 
 interface SyncState {
 	status: SyncUpdate;
-	db: SqliteDatabase;
+	transaction: ControlledTransaction<Database, []>;
 	nv: Client;
 	updateCallback: (update: SyncUpdate) => void;
 }
@@ -24,7 +47,8 @@ interface SyncRequest {
 	credentials: Credentials;
 }
 
-interface SyncUpdate {
+export interface SyncUpdate {
+	type: 'SYNC';
 	artistsSynced: number;
 	albumsSynced: number;
 	songsSynced: number;
@@ -33,104 +57,135 @@ interface SyncUpdate {
 
 type WorkerRequest = SyncRequest;
 
-interface SuccessResponse<T> {
+export interface SuccessResponse<T> {
 	id: number;
 	data: T;
 }
 
-interface ErrorResponse {
+export interface ErrorResponse {
 	id: number;
 	error: string;
 }
 
-export type WorkerResponse<T> = SuccessResponse<T> | ErrorResponse;
+export interface ReadyMessage {
+	type: 'READY'
+}
 
-import sqlite3InitModule, {
-	Database as SqliteDatabase,
-	type BindingSpec,
-	type Sqlite3Static,
-	type SqlValue
-} from '@sqlite.org/sqlite-wasm';
-import {
-	Client,
-	type Album as AlbumTable,
-	type Artist as ArtistTable,
-	type Credentials,
-	type SearchResult3,
-	type Song as SongTable
-} from './navidrome.ts';
-import type { Database } from './database_types.ts';
-import {
-	CompiledQuery,
-	DummyDriver,
-	Kysely,
-	SqliteAdapter,
-	SqliteIntrospector,
-	SqliteQueryCompiler,
-	type AbortableOperationOptions,
-	type ControlConnectionProvider,
-	type DatabaseConnection,
-	type Driver,
-	type QueryCompiler,
-	type QueryResult,
-	type TransactionSettings
-} from 'kysely';
+export type WorkerResponse = SyncUpdate | ReadyMessage;
 
 const DB_NAME = 'hificoos.sqlite3';
-const TMP_DB_NAME = 'hificoos.tmp.sqlite3';
-const COMMIT_LOCK_NAME = 'hificoos.commit.lock';
 const CURRENT_SCHEMA_VERSION = 1;
 
-let dbConn: SqliteDatabase | null = null;
 let sqlite3: Sqlite3Static | null = null;
 let isReady = false;
 
-class MyConn implements DatabaseConnection {
-	executeQuery<R>(compiledQuery: CompiledQuery, _options?: AbortableOperationOptions): Promise<QueryResult<R>> {
-		// TODO: validate parameters
-		const res = dbConn!.exec(compiledQuery.sql, {bind: compiledQuery.parameters as BindingSpec, returnValue: 'resultRows'})
-		return Promise.resolve({
-			numAffectedRows: BigInt(res.length),
-			rows: res as R[]
-		} as QueryResult<R>)
+class SqliteConnection implements DatabaseConnection {
+	db: SqliteDatabase;
+	private inTransaction = false;
+
+	constructor(db: SqliteDatabase) {
+		this.db = db;
 	}
-	streamQuery<R>(compiledQuery: CompiledQuery, chunkSize: number, options?: AbortableOperationOptions): AsyncIterableIterator<QueryResult<R>> {
-		throw new Error('Method not implemented.');
+
+	executeQuery<R>(
+		compiledQuery: CompiledQuery,
+		_options?: AbortableOperationOptions
+	): Promise<QueryResult<R>> {
+		try {
+			const result = this.db.exec(compiledQuery.sql, {
+				bind: compiledQuery.parameters as BindingSpec,
+				returnValue: 'resultRows'
+			});
+			return Promise.resolve({ rows: result as R[] });
+		} catch (err) {
+			throw new Error(`Query execution failed`, { cause: err });
+		}
+	}
+
+	streamQuery<R>(
+		_compiledQuery: CompiledQuery,
+		_chunkSize: number,
+		_options?: AbortableOperationOptions
+	): AsyncIterableIterator<QueryResult<R>> {
+		throw new Error('Streaming queries not yet implemented');
+	}
+
+	beginTransaction(_settings: TransactionSettings): Promise<void> {
+		if (this.inTransaction) {
+			throw new Error('Cannot start transaction within an existing transaction');
+		}
+		this.db.exec('BEGIN IMMEDIATE');
+		this.inTransaction = true;
+		return Promise.resolve();
+	}
+
+	commitTransaction(): Promise<void> {
+		if (!this.inTransaction) {
+			throw new Error('No active transaction to commit');
+		}
+		try {
+			this.db.exec('COMMIT');
+		} catch (err) {
+			try {
+				this.db.exec('ROLLBACK');
+			} catch {
+				// ignored
+			}
+			throw new Error(`Commit failed`, {
+				cause: err
+			});
+		}
+		this.inTransaction = false;
+		return Promise.resolve();
+	}
+
+	rollbackTransaction(): Promise<void> {
+		try {
+			this.db.exec('ROLLBACK');
+		} catch (err) {
+			console.error('Rollback failed:', err);
+		}
+		this.inTransaction = false;
+		return Promise.resolve();
 	}
 }
 
-class MyDriver implements Driver {
+class SqliteDriver implements Driver {
 	init(_options?: AbortableOperationOptions): Promise<void> {
 		return Promise.resolve();
 	}
+
 	acquireConnection(_options?: AbortableOperationOptions): Promise<DatabaseConnection> {
-		throw new Error('Method not implemented.');
-	}
-	beginTransaction(connection: DatabaseConnection, settings: TransactionSettings): Promise<void> {
-		throw new Error('Method not implemented.');
-	}
-	commitTransaction(connection: DatabaseConnection): Promise<void> {
-		throw new Error('Method not implemented.');
-	}
-	rollbackTransaction(connection: DatabaseConnection): Promise<void> {
-		throw new Error('Method not implemented.');
-	}
-	savepoint?(connection: DatabaseConnection, savepointName: string, compileQuery: QueryCompiler['compileQuery']): Promise<void> {
-		throw new Error('Method not implemented.');
-	}
-	rollbackToSavepoint?(connection: DatabaseConnection, savepointName: string, compileQuery: QueryCompiler['compileQuery']): Promise<void> {
-		throw new Error('Method not implemented.');
-	}
-	releaseSavepoint?(connection: DatabaseConnection, savepointName: string, compileQuery: QueryCompiler['compileQuery']): Promise<void> {
-		throw new Error('Method not implemented.');
-	}
-	releaseConnection(connection: DatabaseConnection, options?: AbortableOperationOptions): Promise<void> {
-		throw new Error('Method not implemented.');
-	}
-	destroy(options?: AbortableOperationOptions): Promise<void> {
-		throw new Error('Method not implemented.');
+		const db = openDB(sqlite3!, DB_NAME);
+
+		db.exec('PRAGMA busy_timeout=5000;');
+
+		return Promise.resolve(new SqliteConnection(db));
 	}
 
+	beginTransaction(connection: SqliteConnection, settings: TransactionSettings): Promise<void> {
+		return connection.beginTransaction(settings);
+	}
+
+	commitTransaction(connection: SqliteConnection): Promise<void> {
+		return connection.commitTransaction();
+	}
+
+	rollbackTransaction(connection: SqliteConnection): Promise<void> {
+		return connection.rollbackTransaction();
+	}
+
+	releaseConnection(
+		connection: SqliteConnection,
+		_options?: AbortableOperationOptions
+	): Promise<void> {
+		connection.db.close();
+		return Promise.resolve();
+	}
+
+	destroy(_options?: AbortableOperationOptions): Promise<void> {
+		return Promise.resolve();
+	}
 }
 
 const db = new Kysely<Database>({
@@ -139,7 +194,7 @@ const db = new Kysely<Database>({
 			return new SqliteAdapter();
 		},
 		createDriver() {
-			return new DummyDriver();
+			return new SqliteDriver();
 		},
 		createIntrospector(db: Kysely<unknown>) {
 			return new SqliteIntrospector(db);
@@ -150,31 +205,15 @@ const db = new Kysely<Database>({
 	}
 });
 
-async function recoverCommit() {
-	try {
-		const opfsRoot = await navigator.storage.getDirectory();
-		const lockHandle = await opfsRoot.getFileHandle(COMMIT_LOCK_NAME).catch(() => null);
-		if (!lockHandle) {
-			return;
-		}
-
-		console.log(`Found ${COMMIT_LOCK_NAME}, recovering incomplete sync...`);
-		await commitTempDatabase();
-	} catch (err) {
-		// TODO: We probably just want to clear everything and reset to a clean state
-		console.error('Error during commit recovery:', err);
-	}
-}
-
 async function start() {
-	await recoverCommit();
-	dbConn = openDB(sqlite3!, DB_NAME);
+	let dbConn = openDB(sqlite3!, DB_NAME);
 	if (!checkDBVersion(dbConn)) {
 		console.log('DB Version check mismatch, resetting database');
 		dbConn.close();
 		await deleteOpfsFile(DB_NAME);
 		dbConn = openDB(sqlite3!, DB_NAME);
 		initDB(dbConn);
+		dbConn.close();
 	} else {
 		console.log('Existing database found');
 	}
@@ -188,18 +227,18 @@ ctx.onconnect = (event: MessageEvent<WorkerRequest>) => {
 			if (isReady && !port._ready) {
 				clearInterval(check);
 				port._ready = true;
-				port.postMessage({ type: 'READY' });
+				port.postMessage({ type: 'READY' } as ReadyMessage);
 			}
 		}, 50);
 	} else {
-		port.postMessage({ type: 'READY' });
+		port.postMessage({ type: 'READY' } as ReadyMessage);
 	}
 
 	port.onmessage = async (e: MessageEvent<WorkerRequest>) => {
 		const { id, type, ...payload } = e.data;
 
 		try {
-			if (!isReady || !dbConn) {
+			if (!isReady) {
 				throw new Error('DB not initialized');
 			}
 
@@ -220,35 +259,37 @@ ctx.onconnect = (event: MessageEvent<WorkerRequest>) => {
 };
 
 async function sync(credentials: Credentials, updateCallback: (msg: SyncUpdate) => void) {
-	const status: SyncUpdate = {
-		albumsSynced: 0,
-		artistsSynced: 0,
-		songsSynced: 0,
-		isDone: false
-	};
-	updateCallback(status);
+	const txn = await db.startTransaction().execute();
+	try {
+		const status: SyncUpdate = {
+			type: 'SYNC',
+			albumsSynced: 0,
+			artistsSynced: 0,
+			songsSynced: 0,
+			isDone: false,
+		};
+		updateCallback(status);
 
-	await deleteOpfsFile(TMP_DB_NAME);
-	const tdb = openDB(sqlite3!, TMP_DB_NAME);
-	await initDB(tdb);
+		txn.deleteFrom('song').execute();
+		txn.deleteFrom('album').execute();
+		txn.deleteFrom('artist').execute();
 
-	const nv = new Client(import.meta.env.VITE_NAVIDROME_URL, credentials);
+		const nv = new Client(import.meta.env.VITE_NAVIDROME_URL, credentials);
 
-	const state: SyncState = {
-		updateCallback,
-		db: tdb,
-		nv,
-		status
-	};
-	await syncArtists(state);
-	await syncAlbums(state);
-	await syncSongs(state);
-	tdb.close();
-	await commitTempDatabase();
-	state.status.isDone = true;
-	dbConn?.close();
-	dbConn = openDB(sqlite3!, DB_NAME); // Reopen the database
-	updateCallback(state.status);
+		const state: SyncState = {
+			updateCallback,
+			transaction: txn,
+			nv,
+			status
+		};
+		await syncArtists(state);
+		await syncAlbums(state);
+		await syncSongs(state);
+		await txn.commit();
+		state.status.isDone = true;
+	} catch {
+		await txn.rollback().execute();
+	}
 }
 
 async function deleteOpfsFile(dbName: string): Promise<void> {
@@ -277,6 +318,7 @@ function openDB(sqlite3: Sqlite3Static, dbName: string) {
 }
 
 function checkDBVersion(db: SqliteDatabase) {
+	// TODO: User Kysely
 	try {
 		const result = db.exec('SELECT version FROM schema_version LIMIT 1', {
 			returnValue: 'resultRows'
@@ -316,118 +358,72 @@ export const initializeDatabaseWorker = async () => {
 
 type ArrayItem<T extends readonly unknown[]> = T extends readonly (infer U)[] ? U : never;
 
-async function syncSearch3Field<T extends keyof SearchResult3>(
+async function syncSearch3Field<T extends keyof SearchResult3, K extends keyof Database>(
 	state: SyncState,
 	field: T,
-	fieldMapper: {
-		[key: string]: (item: ArrayItem<Exclude<SearchResult3[T], undefined>>) => SqlValue;
-	}
+	table: K,
+	mapper: (item: ArrayItem<Exclude<SearchResult3[T], undefined>>) => InsertObject<Database, K>
 ) {
 	const BATCH_SIZE = 100;
-	const fields = Object.keys(fieldMapper);
-	const ROW_PARAMS = `(${fields.map(() => '?')})`;
 	while (true) {
 		const resp = await state.nv.search3({ albumCount: BATCH_SIZE, albumOffset: 0 });
-		const lst = resp[field];
+		const lst = resp[field] as ArrayItem<Exclude<SearchResult3[T], undefined>>[];
 		if (!lst?.length) {
 			break;
 		}
 
-		let query = `INSERT INTO ${field}s (${fields.join(',')}) VALUES `;
-		const rows: string[] = [];
-		const args: SqlValue[] = [];
-		lst.forEach((item) => {
-			rows.push(ROW_PARAMS);
-			fields.forEach((k) => {
-				args.push(
-					fieldMapper[k](item as unknown as ArrayItem<Exclude<SearchResult3[T], undefined>>)
-				);
-			});
-		});
-		query = query + rows.join(',') + ';';
-		state.db.exec(query, { bind: args });
-		state.status[`${field}sSynced`] += rows.length;
+		const values = lst.map(mapper);
+		state.transaction.insertInto(table).values(values).execute();
+
+		state.status[`${field}sSynced`] += values.length;
 		state.updateCallback(state.status);
 	}
 }
 
 async function syncArtists(state: SyncState) {
-	const FIELDS_MAPPER: { [key: string]: (album: ArtistTable) => SqlValue } = {
-		id: (a) => a.id,
-		name: (a) => a.name,
-		artist_image_url: (a) => a.artistImageUrl || null,
-		sort_name: (a) => a.sortName || a.name
-	};
-	await syncSearch3Field(state, 'artist', FIELDS_MAPPER);
+	await syncSearch3Field(state, 'artist', 'artist', (item) => {
+		return {
+			id: item.id,
+			image_url: item.artistImageUrl,
+			name: item.name,
+			sort_name: item.sortName || item.name
+		};
+	});
 }
 
 async function syncAlbums(state: SyncState) {
-	const FIELD_MAPPER: { [key: string]: (album: AlbumTable) => SqlValue } = {
-		id: (a) => a.id,
-		name: (a) => a.name,
-		sort_name: (a) => a.sortName || a.name,
-		cover_art: (a) => a.coverArt || null, // TODO: set default
-		display_artists: (a) => a.displayArtist,
-		year: (a) => a.year || null,
-		created: () => 0 // TODO: convert to unix time -- s.created
-	};
-	await syncSearch3Field(state, 'album', FIELD_MAPPER);
+	await syncSearch3Field(state, 'album', 'album', (item) => {
+		return {
+			id: item.id,
+			name: item.name,
+			sort_name: item.sortName || item.name,
+			year: item.year || 0,
+			display_artist: item.displayArtist,
+			cover_art: item.coverArt!,
+			created: 0 // TODO
+		};
+	});
 }
 
 async function syncSongs(state: SyncState) {
-	const FIELD_MAPPER: { [key: string]: (song: SongTable) => SqlValue } = {
-		id: (s) => s.id,
-		title: (s) => s.title,
-		track: (s) => s.track,
-		disc_number: (s) => s.discNumber,
-		cover_art: (s) => s.coverArt,
-		content_type: (s) => s.contentType,
-		suffix: (s) => s.suffix,
-		duration: (s) => s.duration,
-		artist_id: (s) => s.artistId,
-		album_id: (s) => s.albumId,
-		rg_track_gain: (s) => s.replayGain?.trackGain || null,
-		rg_album_gain: (s) => s.replayGain?.albumGain || null,
-		rg_track_peak: (s) => s.replayGain?.trackPeak || null,
-		rg_album_peak: (s) => s.replayGain?.albumPeak || null
-	};
-	await syncSearch3Field(state, 'song', FIELD_MAPPER);
-}
-
-async function commitTempDatabase() {
-	const opfsRoot = await navigator.storage.getDirectory();
-
-	// Create commit.lock to signal in-progress commit
-	await opfsRoot.getFileHandle(COMMIT_LOCK_NAME, { create: true });
-
-	try {
-		let tmpHandle;
-		try {
-			tmpHandle = await opfsRoot.getFileHandle(TMP_DB_NAME);
-		} catch {
-			// TOOO: make sure it is actually not found error and not something else
-			return;
-		}
-		await deleteOpfsFile(DB_NAME);
-
-		// Copy data from temp DB to main DB
-		const newHandle = await opfsRoot.getFileHandle(DB_NAME, { create: true });
-		const tmpFile = await tmpHandle.getFile();
-		const buffer = await tmpFile.arrayBuffer();
-		const writable = await newHandle.createWritable();
-		await writable.write(buffer);
-		await writable.close();
-
-		// Remove temp DB
-		await deleteOpfsFile(TMP_DB_NAME);
-	} finally {
-		// Always remove commit.lock (even on error)
-		try {
-			await opfsRoot.removeEntry(COMMIT_LOCK_NAME);
-		} catch (err) {
-			console.warn('Could not remove commit.lock:', err);
-		}
-	}
+	await syncSearch3Field(state, 'song', 'song', (item) => {
+		return {
+			id: item.id,
+			title: item.title,
+			album_id: item.albumId,
+			artist_id: item.artistId,
+			content_type: item.contentType,
+			disc_number: item.discNumber,
+			cover_art: item.coverArt!,
+			duration: item.duration,
+			rg_album_gain: item.replayGain?.albumGain || null,
+			rg_album_peak: item.replayGain?.albumPeak || null,
+			rg_track_gain: item.replayGain?.trackGain || null,
+			rg_track_peak: item.replayGain?.trackPeak || null,
+			suffix: item.suffix,
+			track: item.track
+		};
+	});
 }
 
 initializeDatabaseWorker();

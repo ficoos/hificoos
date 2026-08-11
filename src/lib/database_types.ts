@@ -63,7 +63,7 @@ const SONGS_TABLE = {
 		cover_art: { type: 'TEXT', isNullable: false, props: [] },
 		content_type: { type: 'TEXT', isNullable: false, props: [] },
 		suffix: { type: 'TEXT', isNullable: false, props: [] },
-		duration: { type: 'TEXT', isNullable: false, props: [] },
+		duration: { type: 'INTEGER', isNullable: false, props: [] },
 		artist_id: { type: 'TEXT', isNullable: false, props: [] },
 		album_id: { type: 'TEXT', isNullable: false, props: [] },
 		rg_track_gain: { type: 'FLOAT', isNullable: true, props: [] },
@@ -110,14 +110,16 @@ function generateSchemaBase(): string {
 		schema.push(`CREATE TABLE ${table.name} (`);
 		// Sort to make sure the output is consistent
 		const sortedFieldNames = Object.keys(table.fields).sort();
-		for (const fieldName in sortedFieldNames) {
+		for (const fieldName of sortedFieldNames) {
 			const field = table.fields[fieldName];
 			schema.push(
 				`${fieldName} ${field.type} ${field.isNullable ? 'NOT NULL' : ''} ${field.props.join(' ')},`
 			);
 		}
 		for (const fk of table.foreignKeys || []) {
-			schema.push(`FOREIGN KEY (${fk.field})  REFERENCES ${fk.foreignTable}(${fk.foreignField}),`);
+			schema.push(
+				`FOREIGN KEY (${fk.field})  REFERENCES ${fk.foreignTable}(${fk.foreignField}),`
+			);
 		}
 		schema.push(');');
 	}
@@ -148,4 +150,3 @@ export interface Database {
 
 export const SCHEMA_VERSION = calculateSchemaVersion();
 export const SCHEMA: string = generateSchema();
-

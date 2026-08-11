@@ -1,6 +1,6 @@
 import { SvelteMap } from 'svelte/reactivity';
 import DatabaseWorker from './database_worker?sharedworker'
-import type { WorkerCommand } from './database_worker';
+import type { WorkerCommand, WorkerResponse } from './database_worker';
 
 export class DAL {
 	private worker: SharedWorker;
@@ -22,11 +22,12 @@ export class DAL {
 		this.port.start();
 	}
 
-	private handleResponse(data: unknown) {
-		throw new Error('Method not implemented.');
+	private handleResponse(data: WorkerResponse) {
+		console.log(data)
 	}
 
 	private async send(type: WorkerCommand, payload = {}) {
+		console.log(this.isReady)
 		while (!this.isReady) {
 			await new Promise((r) => setTimeout(r, 50));
 		}
@@ -46,3 +47,19 @@ export class DAL {
 		this.port.close();
 	}
 }
+
+navigator.locks.request('sqlite_db_leader', async (_lock) => {
+  // 1. The browser ensures ONLY ONE TAB enters this block at a time
+  console.log("I am the chosen leader tab. Spawning the single DB thread.");
+  
+  const worker = new Worker('my-sqlite-worker.js');
+  
+  // 2. Open up a BroadcastChannel so other tabs can talk to this worker
+  const rxChannel = new BroadcastChannel('db_queries');
+  rxChannel.onmessage = (e) => {
+    worker.postMessage(e.data); // Forward queries from other tabs to the database
+  };
+
+  // Keep this lock alive as long as this tab is open
+  await new Promise(() => {}); 
+});

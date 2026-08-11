@@ -45,7 +45,7 @@ export interface Song {
 	track: number;
 	year: number;
 	genre: string;
-	coverArt: string;
+	coverArt?: string;
 	size: number;
 	contentType: string;
 	suffix: string;
