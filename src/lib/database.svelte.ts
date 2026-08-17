@@ -1,65 +1,55 @@
-import { SvelteMap } from 'svelte/reactivity';
-import DatabaseWorker from './database_worker?sharedworker'
-import type { WorkerCommand, WorkerResponse } from './database_worker';
+import { browser } from '$app/environment';
+import { Spoke, type ServiceStub } from 'tab-election/hub';
+import HubWorkerUrl from '$lib/db/hub.worker?worker&url';
+import { DatabaseService, type SyncUpdate } from '$lib/db/database-service';
+import { getCredentials } from './auth.svelte';
+import { get } from 'svelte/store';
 
 export class DAL {
-	private worker: SharedWorker;
-	port: MessagePort;
-	pendingRequests: SvelteMap<
-		number,
-		{ resolve: (value: unknown) => void; reject: (value: unknown) => void }
-	>;
-	nextId: number;
-	isReady: boolean;
+	private spoke: Spoke | undefined;
+	readonly db: ServiceStub<DatabaseService> | undefined;
+	state = $state<{ ready: boolean; isLeader: boolean; sync?: SyncUpdate; error?: string }>({
+		ready: false,
+		isLeader: false
+	});
 
-	constructor(workerName: string = 'shared-db') {
-		this.worker = new DatabaseWorker({name: workerName});
-		this.port = this.worker.port;
-		this.pendingRequests = new SvelteMap();
-		this.nextId = 0;
-		this.isReady = false;
-		this.port.onmessage = (e) => this.handleResponse(e.data);
-		this.port.start();
-	}
-
-	private handleResponse(data: WorkerResponse) {
-		console.log(data)
-	}
-
-	private async send(type: WorkerCommand, payload = {}) {
-		console.log(this.isReady)
-		while (!this.isReady) {
-			await new Promise((r) => setTimeout(r, 50));
+	private constructor() {
+		if (!browser) {
+			// SSR safety
+			return;
 		}
-
-		const id = ++this.nextId;
-		return new Promise((resolve, reject) => {
-			this.pendingRequests.set(id, { resolve, reject });
-			this.port.postMessage({ id, type, ...payload });
+		this.spoke = new Spoke({
+			workerUrl: HubWorkerUrl,
+			name: 'hificoos-db',
+			version: '1',
+			callTimeout: 30 * 60 * 1000 // long syncs (gotcha #2)
 		});
+		this.db = this.spoke.getService<DatabaseService>('db');
+		this.spoke.onState((s) => {
+			this.state.ready = !!s.db?.ready;
+			this.state.sync = s.sync;
+			this.state.error = s.db?.error;
+		});
+		this.spoke.onLeaderChange((isLeader) => (this.state.isLeader = isLeader));
+		this.spoke.onRecoveryFailed(
+			({ attempts }) => (this.state.error = `DB worker recovery failed after ${attempts} attempts`)
+		);
 	}
 
-	async syncDB() {
-		await this.send('SYNC')
+	syncDB() {
+		const credentials = get(getCredentials())
+		return this.db!.sync(credentials);
 	}
-
-	async close() {
-		this.port.close();
+	// getArtists() {
+	// 	return this.db!.getArtists();
+	// }
+	// ... getAlbums, getSongs, getSyncStatus
+	close() {
+		this.spoke?.close();
 	}
 }
 
-navigator.locks.request('sqlite_db_leader', async (_lock) => {
-  // 1. The browser ensures ONLY ONE TAB enters this block at a time
-  console.log("I am the chosen leader tab. Spawning the single DB thread.");
-  
-  const worker = new Worker('my-sqlite-worker.js');
-  
-  // 2. Open up a BroadcastChannel so other tabs can talk to this worker
-  const rxChannel = new BroadcastChannel('db_queries');
-  rxChannel.onmessage = (e) => {
-    worker.postMessage(e.data); // Forward queries from other tabs to the database
-  };
-
-  // Keep this lock alive as long as this tab is open
-  await new Promise(() => {}); 
-});
+let instance: DAL | undefined;
+export function getDAL(): DAL {
+	return (instance ??= new DAL());
+} // ONE spoke/worker per tab — singleton

@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { DAL } from '$lib/database.svelte';
+	import { DAL, getDAL } from '$lib/database.svelte';
 
-	let dal: DAL = new DAL();
+	let dal: DAL = getDAL();
 </script>
 
 <h1>Welcome to SvelteKit</h1>

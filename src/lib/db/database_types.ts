@@ -1,5 +1,5 @@
-import type { Insertable, Selectable } from 'kysely';
-import { md5 } from './md5';
+import type { Insertable, Kysely, Selectable } from 'kysely';
+import { md5 } from '../md5';
 
 type SQLType = 'TEXT' | 'INTEGER' | 'FLOAT';
 interface TypeMap {
@@ -98,7 +98,7 @@ type AlbumTable = TypeMapper<typeof ALBUMS_TABLE.fields>;
 type SongTable = TypeMapper<typeof SONGS_TABLE.fields>;
 
 function generateSchema() {
-	return generateSchemaBase() + `INSERT INTO schema_version (version) VALUES (${SCHEMA_VERSION})`;
+	return generateSchemaBase() + `INSERT INTO schema_version (version) VALUES ('${SCHEMA_VERSION}')`;
 }
 
 function generateSchemaBase(): string {
@@ -113,7 +113,7 @@ function generateSchemaBase(): string {
 		for (const fieldName of sortedFieldNames) {
 			const field = table.fields[fieldName];
 			schema.push(
-				`${fieldName} ${field.type} ${field.isNullable ? 'NOT NULL' : ''} ${field.props.join(' ')},`
+				`${fieldName} ${field.type} ${field.isNullable ? '' : 'NOT NULL'} ${field.props.join(' ')},`
 			);
 		}
 		for (const fk of table.foreignKeys || []) {
@@ -124,7 +124,7 @@ function generateSchemaBase(): string {
 		schema.push(');');
 	}
 	schema.push(
-		"CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, applied_at TEXT DEFAULT (datetime('now')))"
+		"CREATE TABLE IF NOT EXISTS schema_version (version TEXT PRIMARY KEY, applied_at TEXT DEFAULT (datetime('now')))"
 	);
 
 	return schema.join('\n');

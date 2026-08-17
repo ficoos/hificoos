@@ -12,25 +12,54 @@ import sqlite3InitModule, {
 	type BindingSpec,
 	type Sqlite3Static
 } from '@sqlite.org/sqlite-wasm';
-import { Client, type Credentials, type SearchResult3 } from './navidrome.ts';
-import type { Database } from './database_types.ts';
-import { SCHEMA } from './database_types.ts';
 import {
-	CompiledQuery,
-	ControlledTransaction,
 	Kysely,
 	SqliteAdapter,
 	SqliteIntrospector,
 	SqliteQueryCompiler,
 	type AbortableOperationOptions,
+	type CompiledQuery,
+	type ControlledTransaction,
 	type DatabaseConnection,
 	type Driver,
 	type InsertObject,
 	type QueryResult,
 	type TransactionSettings
 } from 'kysely';
+import { type Service, type Hub } from 'tab-election/hub';
+import type { Database } from './database_types';
+import type { Client, Credentials, SearchResult3 } from '../navidrome';
 
-const ctx = self as unknown as SharedWorkerGlobalScope;
+interface DbEvents {
+	'sync-complete': { ok: boolean; error?: string };
+} // reserved; state is primary
+
+export class DatabaseService implements Service {
+	readonly namespace = 'db' as const;
+	readonly __events?: DbEvents; // phantom, for typed stubs
+	private sqlite3?: Sqlite3Static;
+	private kysely?: Kysely<Database>;
+	private hub?: Hub;
+	private syncRunning = false;
+
+	async init(hub: Hub) {
+		// ONLY RUNS ON THE LEADER — this is the whole point of the migration.
+		this.hub = hub;
+		this.sqlite3 = await sqlite3InitModule();
+		console.log('INIT DB')
+		// openDB(name,'c','opfs'), check version, (re)init schema if mismatch,
+		// build Kysely with the existing SqliteDriver/SqliteConnection (port from database_worker.ts)
+		hub.updateState({ db: { ready: true } });
+	}
+	close() {
+		this.kysely?.destroy();
+	}
+
+	async sync(credentials: Credentials): Promise<void> {
+		console.log('SYNC CALLED')
+		/* ported from database_worker.ts */
+	}
+}
 
 export type WorkerCommand = 'SYNC';
 
@@ -68,7 +97,7 @@ export interface ErrorResponse {
 }
 
 export interface ReadyMessage {
-	type: 'READY'
+	type: 'READY';
 }
 
 export type WorkerResponse = SyncUpdate | ReadyMessage;
@@ -220,44 +249,6 @@ async function start() {
 	isReady = true;
 }
 
-ctx.onconnect = (event: MessageEvent<WorkerRequest>) => {
-	const port: MessagePort & { _ready?: boolean } = event.ports[0];
-	if (!isReady) {
-		const check = setInterval(() => {
-			if (isReady && !port._ready) {
-				clearInterval(check);
-				port._ready = true;
-				port.postMessage({ type: 'READY' } as ReadyMessage);
-			}
-		}, 50);
-	} else {
-		port.postMessage({ type: 'READY' } as ReadyMessage);
-	}
-
-	port.onmessage = async (e: MessageEvent<WorkerRequest>) => {
-		const { id, type, ...payload } = e.data;
-
-		try {
-			if (!isReady) {
-				throw new Error('DB not initialized');
-			}
-
-			switch (type) {
-				case 'SYNC':
-					sync(payload.credentials, (data) => port.postMessage({ id, data }));
-					break;
-				default:
-					throw new Error(`Unknown command: ${type}`);
-			}
-		} catch (err) {
-			const message = err instanceof Error ? err.message : 'Unknown error';
-			port.postMessage({ id, error: message });
-		}
-	};
-
-	port.start();
-};
-
 async function sync(credentials: Credentials, updateCallback: (msg: SyncUpdate) => void) {
 	const txn = await db.startTransaction().execute();
 	try {
@@ -266,7 +257,7 @@ async function sync(credentials: Credentials, updateCallback: (msg: SyncUpdate) 
 			albumsSynced: 0,
 			artistsSynced: 0,
 			songsSynced: 0,
-			isDone: false,
+			isDone: false
 		};
 		updateCallback(status);
 
@@ -426,4 +417,4 @@ async function syncSongs(state: SyncState) {
 	});
 }
 
-initializeDatabaseWorker();
+//initializeDatabaseWorker();
