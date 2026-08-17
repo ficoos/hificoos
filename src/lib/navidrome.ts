@@ -145,7 +145,7 @@ export class Client {
 	async search3(args: Search3Args): Promise<SearchResult3> {
 		const resp = await this.get(
 			'search3',
-			Object.fromEntries(Object.entries(args).map((k, v) => [k, v.toString()]))
+			Object.fromEntries(Object.entries(args).map(([k, v]) => [k, v.toString()]))
 		);
 
 		return resp.searchResult3!

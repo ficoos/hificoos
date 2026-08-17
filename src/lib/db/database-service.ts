@@ -27,37 +27,68 @@ import {
 	type TransactionSettings
 } from 'kysely';
 import { type Service, type Hub } from 'tab-election/hub';
-import type { Database } from './database_types';
-import type { Client, Credentials, SearchResult3 } from '../navidrome';
+import { initializeDatabase, type Database } from './database_types';
+import { Client, type Credentials, type Search3Args, type SearchResult3 } from '../navidrome';
 
 interface DbEvents {
-	'sync-complete': { ok: boolean; error?: string };
+	'sync-progress': SyncUpdate;
 } // reserved; state is primary
 
 export class DatabaseService implements Service {
 	readonly namespace = 'db' as const;
 	readonly __events?: DbEvents; // phantom, for typed stubs
-	private sqlite3?: Sqlite3Static;
-	private kysely?: Kysely<Database>;
 	private hub?: Hub;
+	private db?: Kysely<Database>;
 	private syncRunning = false;
 
 	async init(hub: Hub) {
-		// ONLY RUNS ON THE LEADER — this is the whole point of the migration.
+		console.log('Initializing database leader');
+		console.log(
+			`Cross Origin Isloated = ${self.crossOriginIsolated}, fsdh_found = ${FileSystemDirectoryHandle !== undefined}`
+		);
 		this.hub = hub;
-		this.sqlite3 = await sqlite3InitModule();
-		console.log('INIT DB')
-		// openDB(name,'c','opfs'), check version, (re)init schema if mismatch,
-		// build Kysely with the existing SqliteDriver/SqliteConnection (port from database_worker.ts)
-		hub.updateState({ db: { ready: true } });
+		const sqlite3 = await sqlite3InitModule();
+		console.log('Running SQLite3 version', sqlite3.version.libVersion);
+		this.db = new Kysely<Database>({
+			dialect: {
+				createAdapter() {
+					return new SqliteAdapter();
+				},
+				createDriver() {
+					return new SqliteDriver(sqlite3);
+				},
+				createIntrospector(db: Kysely<unknown>) {
+					return new SqliteIntrospector(db);
+				},
+				createQueryCompiler() {
+					return new SqliteQueryCompiler();
+				}
+			}
+		});
+
+		// TODO: move single connection enforcement inside initializeDatabase
+		await this.db.connection().execute(async (db) => {
+			await initializeDatabase(db);
+		});
+		this.hub.updateState({ db: { ready: true } });
+		// TODO: emit complete sync to reset all other tabs after a switch
+		console.log('Database initialized');
 	}
 	close() {
-		this.kysely?.destroy();
+		this.db?.destroy();
 	}
 
 	async sync(credentials: Credentials): Promise<void> {
-		console.log('SYNC CALLED')
-		/* ported from database_worker.ts */
+		console.log('SYNC CALLED');
+		if (this.syncRunning) {
+			return;
+		}
+		this.syncRunning = true;
+		sync(this.db!, credentials, (upd) => this.hub?.emit('db', 'sync-progress', upd))
+			.finally(() => {
+				this.syncRunning = false;
+			})
+			.catch((e) => console.error(e));
 	}
 }
 
@@ -82,6 +113,7 @@ export interface SyncUpdate {
 	albumsSynced: number;
 	songsSynced: number;
 	isDone: boolean;
+	error?: string;
 }
 
 type WorkerRequest = SyncRequest;
@@ -103,10 +135,6 @@ export interface ReadyMessage {
 export type WorkerResponse = SyncUpdate | ReadyMessage;
 
 const DB_NAME = 'hificoos.sqlite3';
-const CURRENT_SCHEMA_VERSION = 1;
-
-let sqlite3: Sqlite3Static | null = null;
-let isReady = false;
 
 class SqliteConnection implements DatabaseConnection {
 	db: SqliteDatabase;
@@ -120,15 +148,19 @@ class SqliteConnection implements DatabaseConnection {
 		compiledQuery: CompiledQuery,
 		_options?: AbortableOperationOptions
 	): Promise<QueryResult<R>> {
-		try {
-			const result = this.db.exec(compiledQuery.sql, {
-				bind: compiledQuery.parameters as BindingSpec,
-				returnValue: 'resultRows'
-			});
-			return Promise.resolve({ rows: result as R[] });
-		} catch (err) {
-			throw new Error(`Query execution failed`, { cause: err });
-		}
+		const rows = this.db.exec(compiledQuery.sql, {
+			bind: compiledQuery.parameters as BindingSpec,
+			rowMode: 'object', // Ensures rows are mapped to objects
+			returnValue: 'resultRows'
+		}) as R[];
+
+		const numAffectedRows =
+			typeof this.db.changes === 'function' ? BigInt(this.db.changes()) : undefined;
+
+		return Promise.resolve({
+			rows,
+			numAffectedRows
+		});
 	}
 
 	streamQuery<R>(
@@ -180,14 +212,20 @@ class SqliteConnection implements DatabaseConnection {
 }
 
 class SqliteDriver implements Driver {
+	private sqlite: Sqlite3Static;
+
+	constructor(sqlite: Sqlite3Static) {
+		this.sqlite = sqlite;
+	}
 	init(_options?: AbortableOperationOptions): Promise<void> {
 		return Promise.resolve();
 	}
 
 	acquireConnection(_options?: AbortableOperationOptions): Promise<DatabaseConnection> {
-		const db = openDB(sqlite3!, DB_NAME);
+		const db = openDB(this.sqlite, DB_NAME);
 
-		db.exec('PRAGMA busy_timeout=5000;');
+		//db.exec('PRAGMA busy_timeout=5000;');
+		db.exec('PRAGMA foreign_keys = ON;');
 
 		return Promise.resolve(new SqliteConnection(db));
 	}
@@ -217,53 +255,28 @@ class SqliteDriver implements Driver {
 	}
 }
 
-const db = new Kysely<Database>({
-	dialect: {
-		createAdapter() {
-			return new SqliteAdapter();
-		},
-		createDriver() {
-			return new SqliteDriver();
-		},
-		createIntrospector(db: Kysely<unknown>) {
-			return new SqliteIntrospector(db);
-		},
-		createQueryCompiler() {
-			return new SqliteQueryCompiler();
-		}
-	}
-});
-
-async function start() {
-	let dbConn = openDB(sqlite3!, DB_NAME);
-	if (!checkDBVersion(dbConn)) {
-		console.log('DB Version check mismatch, resetting database');
-		dbConn.close();
-		await deleteOpfsFile(DB_NAME);
-		dbConn = openDB(sqlite3!, DB_NAME);
-		initDB(dbConn);
-		dbConn.close();
-	} else {
-		console.log('Existing database found');
-	}
-	isReady = true;
-}
-
-async function sync(credentials: Credentials, updateCallback: (msg: SyncUpdate) => void) {
+async function sync(
+	db: Kysely<Database>,
+	credentials: Credentials,
+	updateCallback: (msg: SyncUpdate) => void
+) {
 	const txn = await db.startTransaction().execute();
+	const status: SyncUpdate = {
+		type: 'SYNC',
+		albumsSynced: 0,
+		artistsSynced: 0,
+		songsSynced: 0,
+		isDone: false
+	};
 	try {
-		const status: SyncUpdate = {
-			type: 'SYNC',
-			albumsSynced: 0,
-			artistsSynced: 0,
-			songsSynced: 0,
-			isDone: false
-		};
 		updateCallback(status);
 
-		txn.deleteFrom('song').execute();
-		txn.deleteFrom('album').execute();
-		txn.deleteFrom('artist').execute();
+		console.log('Cleaning songs');
+		await txn.deleteFrom('song').execute();
+		console.log('Cleaning albums');
+		await txn.deleteFrom('album').execute();
+		console.log('Cleaning artists');
+		await txn.deleteFrom('artist').execute();
 
 		const nv = new Client(import.meta.env.VITE_NAVIDROME_URL, credentials);
 
@@ -276,28 +289,18 @@ async function sync(credentials: Credentials, updateCallback: (msg: SyncUpdate) 
 		await syncArtists(state);
 		await syncAlbums(state);
 		await syncSongs(state);
-		await txn.commit();
+		await txn.commit().execute();
 		state.status.isDone = true;
-	} catch {
+		state.updateCallback(state.status);
+	} catch (e) {
+		console.log(e);
+		status.error = `${e}`;
+		updateCallback(status);
 		await txn.rollback().execute();
 	}
 }
 
-async function deleteOpfsFile(dbName: string): Promise<void> {
-	const opfsRoot = await navigator.storage.getDirectory();
-	try {
-		await opfsRoot.removeEntry(dbName);
-		console.log(`Deleted OPFS file: ${dbName}`);
-	} catch (err) {
-		console.warn('Could not delete OPFS file (may already be gone):', err);
-	}
-}
-
 function openDB(sqlite3: Sqlite3Static, dbName: string) {
-	console.log(
-		`Cross Origin Isloated = ${self.crossOriginIsolated}, fsdh_found = ${FileSystemDirectoryHandle !== undefined}, schema_version = ${CURRENT_SCHEMA_VERSION}`
-	);
-	console.log('Running SQLite3 version', sqlite3.version.libVersion);
 	try {
 		const db = new sqlite3.oo1.DB(dbName, 'c', 'opfs');
 
@@ -308,45 +311,6 @@ function openDB(sqlite3: Sqlite3Static, dbName: string) {
 	}
 }
 
-function checkDBVersion(db: SqliteDatabase) {
-	// TODO: User Kysely
-	try {
-		const result = db.exec('SELECT version FROM schema_version LIMIT 1', {
-			returnValue: 'resultRows'
-		});
-		if (result.length == 0) {
-			return false;
-		}
-		if (result[0][0] !== CURRENT_SCHEMA_VERSION) {
-			return false;
-		}
-	} catch (e) {
-		console.log('Error checking DB version:', e);
-		return false;
-	}
-
-	return true;
-}
-
-async function initDB(db: SqliteDatabase) {
-	db.exec(SCHEMA);
-}
-
-export const initializeDatabaseWorker = async () => {
-	try {
-		console.log('Loading and initializing SQLite3 module...');
-		sqlite3 = await sqlite3InitModule();
-		console.log('Done initializing. Running demo...');
-		await start();
-	} catch (err) {
-		if (err instanceof Error) {
-			console.error('Initialization error:', err.name, err.message);
-		} else {
-			console.error('Initialization error:', err);
-		}
-	}
-};
-
 type ArrayItem<T extends readonly unknown[]> = T extends readonly (infer U)[] ? U : never;
 
 async function syncSearch3Field<T extends keyof SearchResult3, K extends keyof Database>(
@@ -356,17 +320,29 @@ async function syncSearch3Field<T extends keyof SearchResult3, K extends keyof D
 	mapper: (item: ArrayItem<Exclude<SearchResult3[T], undefined>>) => InsertObject<Database, K>
 ) {
 	const BATCH_SIZE = 100;
+	let offset = 0;
+	const args: Search3Args = {
+		albumCount: 0,
+		albumOffset: 0,
+		artistCount: 0,
+		artistOffset: 0,
+		songCount: 0,
+		songOffset: 0
+	};
+	args[`${field}Count`] = BATCH_SIZE;
 	while (true) {
-		const resp = await state.nv.search3({ albumCount: BATCH_SIZE, albumOffset: 0 });
+		args[`${field}Offset`] = offset;
+		const resp = await state.nv.search3(args);
 		const lst = resp[field] as ArrayItem<Exclude<SearchResult3[T], undefined>>[];
 		if (!lst?.length) {
 			break;
 		}
 
 		const values = lst.map(mapper);
-		state.transaction.insertInto(table).values(values).execute();
+		await state.transaction.insertInto(table).values(values).execute();
 
-		state.status[`${field}sSynced`] += values.length;
+		offset += values.length;
+		state.status[`${field}sSynced`] = offset;
 		state.updateCallback(state.status);
 	}
 }
@@ -377,7 +353,7 @@ async function syncArtists(state: SyncState) {
 			id: item.id,
 			image_url: item.artistImageUrl,
 			name: item.name,
-			sort_name: item.sortName || item.name
+			sort_name: item.sortName ?? item.name
 		};
 	});
 }
@@ -387,8 +363,8 @@ async function syncAlbums(state: SyncState) {
 		return {
 			id: item.id,
 			name: item.name,
-			sort_name: item.sortName || item.name,
-			year: item.year || 0,
+			sort_name: item.sortName ?? item.name,
+			year: item.year ?? 0,
 			display_artist: item.displayArtist,
 			cover_art: item.coverArt!,
 			created: 0 // TODO
@@ -407,10 +383,10 @@ async function syncSongs(state: SyncState) {
 			disc_number: item.discNumber,
 			cover_art: item.coverArt!,
 			duration: item.duration,
-			rg_album_gain: item.replayGain?.albumGain || null,
-			rg_album_peak: item.replayGain?.albumPeak || null,
-			rg_track_gain: item.replayGain?.trackGain || null,
-			rg_track_peak: item.replayGain?.trackPeak || null,
+			rg_album_gain: item.replayGain?.albumGain ?? null,
+			rg_album_peak: item.replayGain?.albumPeak ?? null,
+			rg_track_gain: item.replayGain?.trackGain ?? null,
+			rg_track_peak: item.replayGain?.trackPeak ?? null,
 			suffix: item.suffix,
 			track: item.track
 		};

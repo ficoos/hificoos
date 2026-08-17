@@ -46,7 +46,7 @@ export default defineConfig(({ mode }) => {
 				'Cross-Origin-Embedder-Policy': 'require-corp'
 			},
 			cors: {
-				origin: env.VITE_NAVIDROME_URL || true
+				origin: env.VITE_NAVIDROME_URL ?? true
 			}
 		},
 		optimizeDeps: {

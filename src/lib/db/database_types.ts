@@ -1,11 +1,19 @@
-import type { Insertable, Kysely, Selectable } from 'kysely';
+import {
+	CreateTableBuilder,
+	sql,
+	type ColumnBuilderCallback,
+	type Insertable,
+	type Kysely,
+	type Selectable
+} from 'kysely';
 import { md5 } from '../md5';
+import { table } from 'console';
 
-type SQLType = 'TEXT' | 'INTEGER' | 'FLOAT';
+type SQLType = 'TEXT' | 'INTEGER' | 'REAL';
 interface TypeMap {
 	TEXT: string;
 	INTEGER: number;
-	FLOAT: number;
+	REAL: number;
 }
 
 type FieldProp = 'PRIMARY KEY';
@@ -40,6 +48,13 @@ const ARTISTS_TABLE = {
 	}
 } as const;
 
+const SCHEMA_VERSION_TABLE = {
+	name: 'schema_version',
+	fields: {
+		version: { type: 'TEXT', isNullable: false, props: ['PRIMARY KEY'] }
+	}
+} as const;
+
 const ALBUMS_TABLE = {
 	name: 'album',
 	fields: {
@@ -66,24 +81,31 @@ const SONGS_TABLE = {
 		duration: { type: 'INTEGER', isNullable: false, props: [] },
 		artist_id: { type: 'TEXT', isNullable: false, props: [] },
 		album_id: { type: 'TEXT', isNullable: false, props: [] },
-		rg_track_gain: { type: 'FLOAT', isNullable: true, props: [] },
-		rg_album_gain: { type: 'FLOAT', isNullable: true, props: [] },
-		rg_track_peak: { type: 'FLOAT', isNullable: true, props: [] },
-		rg_album_peak: { type: 'FLOAT', isNullable: true, props: [] }
+		rg_track_gain: { type: 'REAL', isNullable: true, props: [] },
+		rg_album_gain: { type: 'REAL', isNullable: true, props: [] },
+		rg_track_peak: { type: 'REAL', isNullable: true, props: [] },
+		rg_album_peak: { type: 'REAL', isNullable: true, props: [] }
 	},
 	foreignKeys: [
 		{
 			field: 'album_id',
-			foreignTable: 'albums',
+			foreignTable: 'album',
 			foreignField: 'id'
 		},
 		{
 			field: 'artist_id',
-			foreignTable: 'artists',
+			foreignTable: 'artist',
 			foreignField: 'id'
 		}
 	]
 } as const;
+
+const TABLE_DEFS: Readonly<Table>[] = [
+	SCHEMA_VERSION_TABLE,
+	ARTISTS_TABLE,
+	ALBUMS_TABLE,
+	SONGS_TABLE
+];
 
 type TypeMapper<T extends TableFields> = {
 	[K in keyof T]: TypeMap[T[K]['type']] extends unknown
@@ -93,46 +115,104 @@ type TypeMapper<T extends TableFields> = {
 		: never;
 };
 
+type SchemaVersionTable = TypeMapper<typeof SCHEMA_VERSION_TABLE.fields>;
 type ArtistTable = TypeMapper<typeof ARTISTS_TABLE.fields>;
 type AlbumTable = TypeMapper<typeof ALBUMS_TABLE.fields>;
 type SongTable = TypeMapper<typeof SONGS_TABLE.fields>;
 
-function generateSchema() {
-	return generateSchemaBase() + `INSERT INTO schema_version (version) VALUES ('${SCHEMA_VERSION}')`;
+function sqlTypeToDataTypeExpression(t: SQLType) {
+	switch (t) {
+		case 'TEXT':
+			return 'text';
+		case 'INTEGER':
+			return 'integer';
+		case 'REAL':
+			return 'real';
+		default:
+			throw new Error(`Unsupported SQLType: ${t}`);
+	}
+}
+function fieldPropsToColumnBuilder(p: readonly FieldProp[]): ColumnBuilderCallback {
+	return (col) => {
+		for (const prop of p) {
+			switch (prop) {
+				case 'PRIMARY KEY':
+					col = col.primaryKey();
+					break;
+				default:
+					throw new Error(`Unsupported prop ${prop}`);
+			}
+		}
+		return col;
+	};
 }
 
-function generateSchemaBase(): string {
-	const tables: Readonly<Table>[] = [ARTISTS_TABLE, ALBUMS_TABLE, SONGS_TABLE];
-	const schema: string[] = [];
-	schema.push('PRAGMA journal_mode = WAL;');
-	schema.push('PRAGMA synchronous = NORMAL;');
-	for (const table of tables) {
-		schema.push(`CREATE TABLE ${table.name} (`);
-		// Sort to make sure the output is consistent
-		const sortedFieldNames = Object.keys(table.fields).sort();
-		for (const fieldName of sortedFieldNames) {
-			const field = table.fields[fieldName];
-			schema.push(
-				`${fieldName} ${field.type} ${field.isNullable ? '' : 'NOT NULL'} ${field.props.join(' ')},`
-			);
-		}
-		for (const fk of table.foreignKeys || []) {
-			schema.push(
-				`FOREIGN KEY (${fk.field})  REFERENCES ${fk.foreignTable}(${fk.foreignField}),`
-			);
-		}
-		schema.push(');');
+export async function initializeDatabase(db: Kysely<Database>) {
+	let version = '';
+	try {
+		const ver = await db.selectFrom('schema_version').select('version').executeTakeFirst();
+		version = ver?.version ?? '';
+	} catch {
+		// ignore
 	}
-	schema.push(
-		"CREATE TABLE IF NOT EXISTS schema_version (version TEXT PRIMARY KEY, applied_at TEXT DEFAULT (datetime('now')))"
-	);
+	if (version === SCHEMA_VERSION) {
+		// Database is initialized
+		return;
+	}
+	console.log(`Schema mismatch ${version} !== ${SCHEMA_VERSION}, resetting database`);
 
-	return schema.join('\n');
+	try {
+		await db.executeQuery(sql`PRAGMA foreign_keys = OFF;`.compile(db));
+
+		// Drop all tables
+		const tables = await db.executeQuery(
+			sql<
+				{name: string}
+			>`SELECT name FROM sqlite_schema WHERE type ='table' AND name NOT LIKE 'sqlite_%';`.compile(
+				db
+			)
+		);
+		for (const table of tables.rows) {
+			console.log(`dropping ${table.name}`);
+			await db.schema.dropTable(table.name).execute();
+		}
+
+		// Create tables
+		for (const table of TABLE_DEFS) {
+			let bld: CreateTableBuilder<string, string> = db.schema.createTable(table.name);
+			for (const col in table.fields) {
+				const field = table.fields[col];
+				bld = bld.addColumn(
+					col,
+					sqlTypeToDataTypeExpression(field.type),
+					fieldPropsToColumnBuilder(field.props)
+				);
+			}
+			for (const fk of table.foreignKeys ?? []) {
+				bld = bld.addForeignKeyConstraint(
+					`${fk.field}_fk`,
+					[fk.field],
+					fk.foreignTable,
+					[fk.foreignField],
+					(cb) => cb.onDelete('cascade')
+				);
+			}
+
+			await bld.execute();
+		}
+		// TODO: VACCUME
+
+		// Must be last to "commit" the schema creation
+		await db.insertInto('schema_version').values({ version: SCHEMA_VERSION }).execute();
+	} finally {
+		await db.executeQuery(sql`PRAGMA foreign_keys = ON;`.compile(db));
+	}
 }
 
 function calculateSchemaVersion() {
-	const base = generateSchemaBase();
-	return md5(new TextEncoder().encode(base));
+	// TODO: Find a way to ensure I don't forget to add tables here when they are added to the schema.
+	const base = TABLE_DEFS.map((v) => JSON.stringify(v)).join('\n');
+	return md5(new TextEncoder().encode(base)).toHex();
 }
 
 export type Artist = Selectable<ArtistTable>;
@@ -146,7 +226,7 @@ export interface Database {
 	artist: ArtistTable;
 	album: AlbumTable;
 	song: SongTable;
+	schema_version: SchemaVersionTable;
 }
 
 export const SCHEMA_VERSION = calculateSchemaVersion();
-export const SCHEMA: string = generateSchema();

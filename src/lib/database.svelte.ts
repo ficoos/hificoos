@@ -1,4 +1,3 @@
-import { browser } from '$app/environment';
 import { Spoke, type ServiceStub } from 'tab-election/hub';
 import HubWorkerUrl from '$lib/db/hub.worker?worker&url';
 import { DatabaseService, type SyncUpdate } from '$lib/db/database-service';
@@ -7,25 +6,23 @@ import { get } from 'svelte/store';
 
 export class DAL {
 	private spoke: Spoke | undefined;
-	readonly db: ServiceStub<DatabaseService> | undefined;
+	readonly db: ServiceStub<DatabaseService>;
 	state = $state<{ ready: boolean; isLeader: boolean; sync?: SyncUpdate; error?: string }>({
 		ready: false,
 		isLeader: false
 	});
 
-	private constructor() {
-		if (!browser) {
-			// SSR safety
-			return;
-		}
+	constructor() {
 		this.spoke = new Spoke({
 			workerUrl: HubWorkerUrl,
 			name: 'hificoos-db',
 			version: '1',
-			callTimeout: 30 * 60 * 1000 // long syncs (gotcha #2)
+			// TODO: I think this timeout is no longer needed
+			callTimeout: 30 * 60 * 1000 // long syncs
 		});
 		this.db = this.spoke.getService<DatabaseService>('db');
 		this.spoke.onState((s) => {
+			console.log(`state:`, s)
 			this.state.ready = !!s.db?.ready;
 			this.state.sync = s.sync;
 			this.state.error = s.db?.error;
@@ -37,8 +34,8 @@ export class DAL {
 	}
 
 	syncDB() {
-		const credentials = get(getCredentials())
-		return this.db!.sync(credentials);
+		const credentials = get(getCredentials());
+		return this.db.sync(credentials);
 	}
 	// getArtists() {
 	// 	return this.db!.getArtists();
