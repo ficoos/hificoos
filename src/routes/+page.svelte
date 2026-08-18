@@ -3,7 +3,6 @@
 	import type { SyncUpdate } from '$lib/db/database-service';
 
 	let syncProgress: SyncUpdate = $state({
-		type: 'SYNC',
 		isDone: true,
 		albumsSynced: 0,
 		artistsSynced: 0,

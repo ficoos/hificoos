@@ -98,7 +98,7 @@ export class DatabaseService implements Service {
 	async albums() {
 		return this.db!.selectFrom('album')
 			.leftJoin('song', 'album_id', 'album.id')
-			.select(({ fn, val, ref }) => [
+			.select(({ fn }) => [
 				'album.id',
 				'album.name',
 				'album.sort_name',
@@ -115,8 +115,6 @@ export class DatabaseService implements Service {
 	}
 }
 
-export type WorkerCommand = 'SYNC';
-
 interface SyncState {
 	status: SyncUpdate;
 	transaction: ControlledTransaction<Database, []>;
@@ -124,38 +122,13 @@ interface SyncState {
 	updateCallback: (update: SyncUpdate) => void;
 }
 
-interface SyncRequest {
-	type: 'SYNC';
-	id: number;
-	credentials: Credentials;
-}
-
 export interface SyncUpdate {
-	type: 'SYNC';
 	artistsSynced: number;
 	albumsSynced: number;
 	songsSynced: number;
 	isDone: boolean;
 	error?: string;
 }
-
-type WorkerRequest = SyncRequest;
-
-export interface SuccessResponse<T> {
-	id: number;
-	data: T;
-}
-
-export interface ErrorResponse {
-	id: number;
-	error: string;
-}
-
-export interface ReadyMessage {
-	type: 'READY';
-}
-
-export type WorkerResponse = SyncUpdate | ReadyMessage;
 
 const DB_NAME = 'hificoos.sqlite3';
 
@@ -287,7 +260,6 @@ async function sync(
 ) {
 	const txn = await db.startTransaction().execute();
 	const status: SyncUpdate = {
-		type: 'SYNC',
 		albumsSynced: 0,
 		artistsSynced: 0,
 		songsSynced: 0,

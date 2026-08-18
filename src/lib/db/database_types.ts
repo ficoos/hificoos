@@ -7,7 +7,6 @@ import {
 	type Selectable
 } from 'kysely';
 import { md5 } from '../md5';
-import { table } from 'console';
 
 type SQLType = 'TEXT' | 'INTEGER' | 'REAL';
 interface TypeMap {
