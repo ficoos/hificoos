@@ -4,6 +4,18 @@ import { DatabaseService, type SyncUpdate } from '$lib/db/database-service';
 import { getCredentials } from './auth.svelte';
 import { get } from 'svelte/store';
 
+export interface AlbumItem {
+    id: string;
+    name: string;
+    sort_name: string;
+    year: number | null;
+    cover_art: string;
+    created: number;
+    song_count: number;
+    duration: number;
+	display_artist: string;
+}
+
 export class DAL {
 	private spoke: Spoke | undefined;
 	readonly db: ServiceStub<DatabaseService>;
@@ -22,7 +34,6 @@ export class DAL {
 		});
 		this.db = this.spoke.getService<DatabaseService>('db');
 		this.spoke.onState((s) => {
-			console.log(`state:`, s)
 			this.state.ready = !!s.db?.ready;
 			this.state.sync = s.sync;
 			this.state.error = s.db?.error;
@@ -36,6 +47,10 @@ export class DAL {
 	syncDB() {
 		const credentials = get(getCredentials());
 		return this.db.sync(credentials);
+	}
+
+	albums(): Promise<AlbumItem[]> {
+		return this.db.albums()
 	}
 	// getArtists() {
 	// 	return this.db!.getArtists();

@@ -10,8 +10,7 @@
 import sqlite3InitModule, {
 	Database as SqliteDatabase,
 	type BindingSpec,
-	type Sqlite3Static
-} from '@sqlite.org/sqlite-wasm';
+	type SAHPoolUtil} from '@sqlite.org/sqlite-wasm';
 import {
 	Kysely,
 	SqliteAdapter,
@@ -48,6 +47,11 @@ export class DatabaseService implements Service {
 		);
 		this.hub = hub;
 		const sqlite3 = await sqlite3InitModule();
+		const PoolUtil = await sqlite3.installOpfsSAHPoolVfs({
+			initialCapacity: 3,
+			clearOnInit: false, // Preserve data across sessions
+			name: 'hificoos-pool'
+		});
 		console.log('Running SQLite3 version', sqlite3.version.libVersion);
 		this.db = new Kysely<Database>({
 			dialect: {
@@ -55,7 +59,7 @@ export class DatabaseService implements Service {
 					return new SqliteAdapter();
 				},
 				createDriver() {
-					return new SqliteDriver(sqlite3);
+					return new SqliteDriver(PoolUtil);
 				},
 				createIntrospector(db: Kysely<unknown>) {
 					return new SqliteIntrospector(db);
@@ -89,6 +93,25 @@ export class DatabaseService implements Service {
 				this.syncRunning = false;
 			})
 			.catch((e) => console.error(e));
+	}
+
+	async albums() {
+		return this.db!.selectFrom('album')
+			.leftJoin('song', 'album_id', 'album.id')
+			.select(({ fn, val, ref }) => [
+				'album.id',
+				'album.name',
+				'album.sort_name',
+				'album.year',
+				'album.cover_art',
+				'album.display_artist',
+				'album.created',
+				fn.count<number>('song.id').as('song_count'),
+				fn.sum<number>('song.duration').as('duration')
+			]).groupBy('album.id')
+			.orderBy('display_artist', 'asc')
+			.orderBy('album.sort_name', 'asc')
+			.execute();
 	}
 }
 
@@ -148,7 +171,8 @@ class SqliteConnection implements DatabaseConnection {
 		compiledQuery: CompiledQuery,
 		_options?: AbortableOperationOptions
 	): Promise<QueryResult<R>> {
-		const rows = this.db.exec(compiledQuery.sql, {
+		const rows = this.db.exec({
+			sql: compiledQuery.sql,
 			bind: compiledQuery.parameters as BindingSpec,
 			rowMode: 'object', // Ensures rows are mapped to objects
 			returnValue: 'resultRows'
@@ -157,6 +181,7 @@ class SqliteConnection implements DatabaseConnection {
 		const numAffectedRows =
 			typeof this.db.changes === 'function' ? BigInt(this.db.changes()) : undefined;
 
+		console.log(compiledQuery.sql)
 		return Promise.resolve({
 			rows,
 			numAffectedRows
@@ -212,17 +237,17 @@ class SqliteConnection implements DatabaseConnection {
 }
 
 class SqliteDriver implements Driver {
-	private sqlite: Sqlite3Static;
+	private poolUtil: SAHPoolUtil;
 
-	constructor(sqlite: Sqlite3Static) {
-		this.sqlite = sqlite;
+	constructor(poolUtil: SAHPoolUtil) {
+		this.poolUtil = poolUtil;
 	}
 	init(_options?: AbortableOperationOptions): Promise<void> {
 		return Promise.resolve();
 	}
 
 	acquireConnection(_options?: AbortableOperationOptions): Promise<DatabaseConnection> {
-		const db = openDB(this.sqlite, DB_NAME);
+		const db = openDB(this.poolUtil, DB_NAME);
 
 		//db.exec('PRAGMA busy_timeout=5000;');
 		db.exec('PRAGMA foreign_keys = ON;');
@@ -300,9 +325,9 @@ async function sync(
 	}
 }
 
-function openDB(sqlite3: Sqlite3Static, dbName: string) {
+function openDB(poolUtil: SAHPoolUtil, dbName: string) {
 	try {
-		const db = new sqlite3.oo1.DB(dbName, 'c', 'opfs');
+		const db = new poolUtil.OpfsSAHPoolDb(dbName);
 
 		return db;
 	} catch (e) {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { DAL, getDAL } from '$lib/database.svelte';
+	import { DAL, getDAL, type AlbumItem } from '$lib/database.svelte';
 	import type { SyncUpdate } from '$lib/db/database-service';
 
 	let syncProgress: SyncUpdate = $state({
@@ -12,6 +12,10 @@
 	let dal: DAL = getDAL();
 	dal.db!.on('sync-progress', (payload) => {
 		syncProgress = payload;
+	});
+	let albums: AlbumItem[] = $state([]);
+	dal.albums().then((result) => {
+		albums = result;
 	});
 </script>
 
@@ -31,3 +35,9 @@
 		dal.syncDB().finally(() => console.log('dsa'));
 	}}>Sync</button
 >
+<span>{albums.length}</span>
+<ul>
+	{#each albums as album (album.id)}
+		<li>{album.display_artist} - {album.name}</li>
+	{/each}
+</ul>
