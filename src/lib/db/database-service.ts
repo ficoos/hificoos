@@ -10,7 +10,8 @@
 import sqlite3InitModule, {
 	Database as SqliteDatabase,
 	type BindingSpec,
-	type SAHPoolUtil} from '@sqlite.org/sqlite-wasm';
+	type SAHPoolUtil
+} from '@sqlite.org/sqlite-wasm';
 import {
 	Kysely,
 	SqliteAdapter,
@@ -108,7 +109,8 @@ export class DatabaseService implements Service {
 				'album.created',
 				fn.count<number>('song.id').as('song_count'),
 				fn.sum<number>('song.duration').as('duration')
-			]).groupBy('album.id')
+			])
+			.groupBy('album.id')
 			.orderBy('display_artist', 'asc')
 			.orderBy('album.sort_name', 'asc')
 			.execute();
@@ -154,7 +156,6 @@ class SqliteConnection implements DatabaseConnection {
 		const numAffectedRows =
 			typeof this.db.changes === 'function' ? BigInt(this.db.changes()) : undefined;
 
-		console.log(compiledQuery.sql)
 		return Promise.resolve({
 			rows,
 			numAffectedRows

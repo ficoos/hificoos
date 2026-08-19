@@ -46,6 +46,7 @@
 		"@sqlite.org/sqlite-wasm": "^3.53.0-build1",
 		"daisyui": "^5.7.16",
 		"kysely": "^0.29.5",
+		"material-symbols": "^0.46.0",
 		"tab-election": "^4.6.2"
 	}
 }

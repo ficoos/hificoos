@@ -55,17 +55,17 @@ export interface Song {
 	albumId: string;
 	type: string;
 	replayGain?: {
-		trackGain: number,
-		albumGain: number,
-		trackPeak: number,
-		albumPeak: number,
-	}
+		trackGain: number;
+		albumGain: number;
+		trackPeak: number;
+		albumPeak: number;
+	};
 }
 
 export interface SearchResult3 {
-	album?: Album[]
-	artist?: Artist[]
-	song?: Song[]
+	album?: Album[];
+	artist?: Artist[];
+	song?: Song[];
 }
 
 export interface SubsonicResponse {
@@ -74,7 +74,7 @@ export interface SubsonicResponse {
 	type: string;
 	serverVersion: string;
 	error?: SubsonicError;
-	searchResult3?: SearchResult3
+	searchResult3?: SearchResult3;
 }
 
 export interface SubsonicError {
@@ -112,7 +112,7 @@ export class Client {
 		this.encoder = new TextEncoder();
 	}
 
-	private async get(path: string, p: Record<string, string>) {
+	private buildUrl(path: string, p: Record<string, string>) {
 		const salt = generateRandomSalt(16);
 		const token = md5(this.encoder.encode(`${this.credentials.password}${salt}`)).toHex();
 		const params = new URLSearchParams({
@@ -124,7 +124,11 @@ export class Client {
 			v: VERSION,
 			...p
 		});
-		const url = `${this.apiPath}/rest/${path}?${params}`;
+		return `${this.apiPath}/rest/${path}?${params}`;
+	}
+
+	private async get(path: string, p: Record<string, string>) {
+		const url = this.buildUrl(path, p);
 		const rawResp = await fetch(url);
 		const content = await rawResp.json();
 		const resp = content['subsonic-response'] as SubsonicResponse;
@@ -138,6 +142,10 @@ export class Client {
 		return resp;
 	}
 
+	getCoverArt(albumId: string, size: number = 300): string {
+		return this.buildUrl('getCoverArt', { id: albumId, size: size.toString() });
+	}
+
 	async ping() {
 		await this.get('ping', {});
 	}
@@ -148,6 +156,6 @@ export class Client {
 			Object.fromEntries(Object.entries(args).map(([k, v]) => [k, v.toString()]))
 		);
 
-		return resp.searchResult3!
+		return resp.searchResult3!;
 	}
 }

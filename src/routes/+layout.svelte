@@ -1,4 +1,5 @@
 <script lang="ts">
+	import 'material-symbols/outlined.css';
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
 	import { resolve } from '$app/paths';
