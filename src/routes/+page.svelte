@@ -42,29 +42,25 @@
 	};
 </script>
 
-{#if !syncProgress.isDone}
-	<h2>Syncing....</h2>
-	<ul>
-		<li>Artists: {syncProgress.artistsSynced}</li>
-		<li>Albums: {syncProgress.albumsSynced}</li>
-		<li>Songs: {syncProgress.songsSynced}</li>
-	</ul>
-{/if}
-<button
-	class="btn btn-square btn-primary"
-	onclick={() => {
-		dal.syncDB().finally(() => console.log('dsa'));
-	}}>Sync</button
->
 <span>{albums.length}</span>
-<div class="m-h-1/1 flex overflow-y-scroll p-2">
+<div class="m-h-1/1 flex overflow-y-scroll">
 	<div class="flex-3">
+		<!-- TODO: Move this section to the server status -->
+		{#if !syncProgress.isDone}
+			<h2>Syncing....</h2>
+			<ul>
+				<li>Artists: {syncProgress.artistsSynced}</li>
+				<li>Albums: {syncProgress.albumsSynced}</li>
+				<li>Songs: {syncProgress.songsSynced}</li>
+			</ul>
+		{/if}
+		<button
+			class="btn btn-square btn-primary"
+			onclick={() => {
+				dal.syncDB().finally(() => console.log('dsa'));
+			}}>Sync</button
+		>
+		<!-- end temp -->
 		<AlbumGrid {albums} coverSize={COVER_SIZE} />
 	</div>
-	<!--- playlist -->
-	<ul class="menu min-h-full w-80 bg-base-200 p-4">
-		<!-- Sidebar content here -->
-		<li><a>Sidebar Item 1</a></li>
-		<li><a>Sidebar Item 2</a></li>
-	</ul>
 </div>
