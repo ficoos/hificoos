@@ -4,6 +4,9 @@
 	import type { SyncUpdate } from '$lib/db/database-service';
 	import { Client } from '$lib/navidrome';
 	import { get } from 'svelte/store';
+	import Player from '$lib/player?worker';
+	import type { Event } from '$lib/player';
+	import AlbumGrid from '$lib/components/album-grid.svelte';
 	const COVER_SIZE = 250;
 
 	let syncProgress: SyncUpdate = $state({
@@ -30,11 +33,13 @@
 			.slice(0, 30);
 	});
 
-	function formatDuration(seconds: number): string {
-		const minutes = Math.floor(seconds / 60);
-		const remainingSeconds = seconds % 60;
-		return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-	}
+	let player = new Player();
+	// TODO: error handling
+	player.onmessage = (ev: MessageEvent<Event>) => {
+		switch (ev.data.type) {
+			case 'STATE_UPDATE':
+		}
+	};
 </script>
 
 {#if !syncProgress.isDone}
@@ -52,72 +57,14 @@
 	}}>Sync</button
 >
 <span>{albums.length}</span>
-<div class="flex flex-wrap justify-center">
-	{#each albums as album (album.id)}
-		<div class="group image-full" style={`max-width: ${COVER_SIZE}px;`}>
-			<figure>
-				<img
-					class="object-contain filter-none"
-					style={`min-width:${COVER_SIZE}px;min-height:${COVER_SIZE}px;max-width:${COVER_SIZE}px;max-height:${COVER_SIZE}px`}
-					crossorigin=""
-					src={album.cover_art}
-					alt={album.name}
-				/>
-			</figure>
-			<div
-				class="card-body hidden cursor-default rounded-md p-2 group-hover:flex"
-				style={`max-width: ${COVER_SIZE}px; min-height:${COVER_SIZE}`}
-			>
-				<div
-					class="justify-start rounded-md border border-white/80 bg-black/50 p-2 backdrop-blur-md"
-				>
-					<table>
-						<tbody class="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
-							<tr>
-								<td><span class="material-symbols-outlined align-middle pr-1">artist</span></td>
-								<td>
-									<div>{album.display_artist}</div>
-								</td>
-							</tr>
-							<tr>
-								<td><span class="material-symbols-outlined align-middle pr-1">album</span></td>
-								<td>
-									<div>{album.name}</div>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-				<div class="flex-1 justify-center"></div>
-				<div class="flex items-center gap-1 p-2">
-					<div class="tooltip" data-tip="Play">
-						<button class="btn btn-circle border border-white/80 btn-primary">
-							<span class="material-symbols-outlined align-middle">play_arrow</span>
-						</button>
-					</div>
-					<div class="tooltip" data-tip="Queue">
-						<button class="btn btn-circle border border-white/80 btn-neutral">
-							<span class="material-symbols-outlined align-middle">playlist_play</span>
-						</button>
-					</div>
-					<div class="tooltip" data-tip="Append">
-						<button class="btn btn-circle border border-white/80 btn-neutral">
-							<span class="material-symbols-outlined align-middle">playlist_add</span>
-						</button>
-					</div>
-					<div class="flex-1"></div>
-					<div class="flex flex-col gap-1">
-						<div class="badge w-1/1 justify-start border border-white/80">
-							<span class="material-symbols-outlined align-middle text-sm!">music_note</span>
-							{album.song_count}
-						</div>
-						<div class="badge w-1/1 justify-start border border-white/80">
-							<span class="material-symbols-outlined align-middle text-sm!">hourglass</span>
-							{formatDuration(album.duration)}
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-	{/each}
+<div class="m-h-1/1 flex overflow-y-scroll p-2">
+	<div class="flex-3">
+		<AlbumGrid {albums} coverSize={COVER_SIZE} />
+	</div>
+	<!--- playlist -->
+	<ul class="menu min-h-full w-80 bg-base-200 p-4">
+		<!-- Sidebar content here -->
+		<li><a>Sidebar Item 1</a></li>
+		<li><a>Sidebar Item 2</a></li>
+	</ul>
 </div>
