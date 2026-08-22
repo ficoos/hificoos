@@ -4,8 +4,6 @@
 	import type { SyncUpdate } from '$lib/db/database-service';
 	import { Client } from '$lib/navidrome';
 	import { get } from 'svelte/store';
-	import Player from '$lib/player?worker';
-	import type { Event } from '$lib/player';
 	import AlbumGrid from '$lib/components/album-grid.svelte';
 	const COVER_SIZE = 250;
 
@@ -32,18 +30,10 @@
 			})
 			.slice(0, 30);
 	});
-
-	let player = new Player();
-	// TODO: error handling
-	player.onmessage = (ev: MessageEvent<Event>) => {
-		switch (ev.data.type) {
-			case 'STATE_UPDATE':
-		}
-	};
 </script>
 
 <span>{albums.length}</span>
-<div class="m-h-1/1 flex overflow-y-scroll">
+<div class="m-h-1/1 flex overflow-y-scroll p-2">
 	<div class="flex-3">
 		<!-- TODO: Move this section to the server status -->
 		{#if !syncProgress.isDone}

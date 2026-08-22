@@ -4,6 +4,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { resolve } from '$app/paths';
 	import ServerStatus from '$lib/components/server-status.svelte';
+	import PlaylistSidebar from '$lib/components/playlist-sidebar.svelte';
 
 	let { children } = $props();
 </script>
@@ -25,15 +26,11 @@
 
 	<!-- Main Content -->
 	<div class="flex flex-1 overflow-hidden">
-	    <main class="flex-1 overflow-y-auto p-2">
-		{@render children()}
+		<main class="flex-1 overflow-y-auto p-2">
+			{@render children()}
 		</main>
-		<aside class="w-80 shrink-0 overflow-y-auto bg-base-200 p-4">
-			<ul class="menu min-h-full">
-				<!-- Sidebar content here -->
-				<li><a>Sidebar Item 1</a></li>
-				<li><a>Sidebar Item 2</a></li>
-			</ul>
+		<aside class="w-120 shrink-0 overflow-y-auto bg-base-200 p-4">
+			<PlaylistSidebar />
 		</aside>
 	</div>
 	<footer class="flex h-20 shrink-0 items-center bg-gray-800 px-4 text-xs text-white">

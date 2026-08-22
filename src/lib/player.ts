@@ -4,18 +4,17 @@
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
 
+import type { SongItem } from './database.svelte';
+
 // Ensures that the `$service-worker` import has proper type definitions
 /// <reference types="@sveltejs/kit" />
 
-export interface PlaylistItem {
-	title: string;
-	display_artist: string;
-	cover_art: string;
-	duration: number;
+export interface PlaylistItem extends SongItem {
+	state?: string; // TODO: should actually be an enum
 }
 
 export interface PlayerrState {
-	active: number;
+	currentTrack: number;
 	playlist: PlaylistItem[];
 }
 
@@ -39,13 +38,18 @@ export interface PlaylistInsert {
 	type: 'PLAYLIST_INSERT';
 	// The place to insert the items, leave empty for append
 	index?: number;
-	items: PlaylistItem[];
+	items: SongItem[];
 }
 
-export type Command = PlaylistClear | PlaylistInsert;
+export interface PlaylistRemove {
+	type: 'PLAYLIST_REMOVE';
+	index: number;
+}
+
+export type Command = PlaylistClear | PlaylistInsert | PlaylistRemove;
 
 const state: PlayerrState = {
-	active: 0,
+	currentTrack: 0,
 	playlist: []
 };
 
@@ -58,6 +62,9 @@ self.onmessage = (event: MessageEvent<Command>) => {
 		case 'PLAYLIST_INSERT':
 			playlistInsert(self, event.data);
 			break;
+		case 'PLAYLIST_REMOVE':
+			playlistRemove(self, event.data);
+			break;
 		default:
 		// TODO: Is this really the best way to handle this? Can we enfore exhustiveness instead?
 		// Ignore
@@ -66,7 +73,12 @@ self.onmessage = (event: MessageEvent<Command>) => {
 
 function playlistClear(self: Window, _data: PlaylistClear) {
 	state.playlist = [];
-	self.postMessage(state as PlayerrStateUpdate);
+	self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
+}
+
+function playlistRemove(self: Window, data: PlaylistRemove) {
+	state.playlist.splice(data.index, 1);
+	self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -82,10 +94,10 @@ function playlistInsert(self: Window, data: PlaylistInsert) {
 			return;
 		}
 		state.playlist.splice(index, 0, ...data.items);
-		if (state.active >= index) {
-			state.active += index;
+		if (state.currentTrack >= index) {
+			state.currentTrack += index;
 		}
 	} finally {
-		self.postMessage(state as PlayerrStateUpdate);
+		self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
 	}
 }

@@ -2,23 +2,35 @@ import { Spoke, type ServiceStub } from 'tab-election/hub';
 import HubWorkerUrl from '$lib/db/hub.worker?worker&url';
 import { DatabaseService, type SyncUpdate } from '$lib/db/database-service';
 import { getCredentials } from './auth.svelte';
-import { get } from 'svelte/store';
+import { get, type Readable } from 'svelte/store';
+import { Client, type Credentials } from './navidrome';
 
 export interface AlbumItem {
-    id: string;
-    name: string;
-    sort_name: string;
-    year: number | null;
-    cover_art: string;
-    created: number;
-    song_count: number;
-    duration: number;
+	id: string;
+	name: string;
+	sort_name: string;
+	year: number | null;
+	cover_art: string;
+	created: number;
+	song_count: number;
+	duration: number;
 	display_artist: string;
+}
+
+export interface SongItem {
+	display_artist: string;
+	cover_art: string;
+	id: string;
+	title: string;
+	album_name: string;
+	track: number;
+	disc_number: number;
 }
 
 export class DAL {
 	private spoke: Spoke | undefined;
 	readonly db: ServiceStub<DatabaseService>;
+	private credentials: Readable<Credentials>;
 	state = $state<{ ready: boolean; isLeader: boolean; sync?: SyncUpdate; error?: string }>({
 		ready: false,
 		isLeader: false
@@ -42,6 +54,11 @@ export class DAL {
 		this.spoke.onRecoveryFailed(
 			({ attempts }) => (this.state.error = `DB worker recovery failed after ${attempts} attempts`)
 		);
+		this.credentials = getCredentials();
+	}
+
+	private createNavidromeClient() {
+		return new Client(import.meta.env.VITE_NAVIDROME_URL, get(this.credentials));
 	}
 
 	syncDB() {
@@ -50,12 +67,15 @@ export class DAL {
 	}
 
 	albums(): Promise<AlbumItem[]> {
-		return this.db.albums()
+		return this.db.albums();
 	}
-	// getArtists() {
-	// 	return this.db!.getArtists();
-	// }
-	// ... getAlbums, getSongs, getSyncStatus
+
+	async albumSongs(albumId: string): Promise<SongItem[]> {
+		const res = await this.db.albumSongs(albumId);
+		const nv = this.createNavidromeClient();
+		return res.map((item) => ({ ...item, cover_art: nv.getCoverArt(item.cover_art) }));
+	}
+
 	close() {
 		this.spoke?.close();
 	}

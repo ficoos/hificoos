@@ -27,7 +27,7 @@ import {
 	type TransactionSettings
 } from 'kysely';
 import { type Service, type Hub } from 'tab-election/hub';
-import { initializeDatabase, type Database } from './database_types';
+import { initializeDatabase, type Database } from './database-types';
 import { Client, type Credentials, type Search3Args, type SearchResult3 } from '../navidrome';
 
 interface DbEvents {
@@ -113,6 +113,24 @@ export class DatabaseService implements Service {
 			.groupBy('album.id')
 			.orderBy('display_artist', 'asc')
 			.orderBy('album.sort_name', 'asc')
+			.execute();
+	}
+
+	async albumSongs(albumId: string) {
+		return this.db!.selectFrom('album')
+			.innerJoin('song', 'album_id', 'album.id')
+			.select(({ ref }) => [
+				'song.id',
+				ref('album.name').as('album_name'),
+				'album.cover_art',
+				'song.track',
+				'song.disc_number',
+				'album.display_artist',
+				'song.title'
+			])
+			.where('album.id', '==', albumId)
+			.orderBy('song.disc_number', 'asc')
+			.orderBy('song.track', 'asc')
 			.execute();
 	}
 }
