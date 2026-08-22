@@ -1,17 +1,17 @@
 import { writable } from 'svelte/store';
 
 export function localStorageStore<T>(key: string, initialValue: T) {
-  const isBrowser = typeof window !== 'undefined';
-  const storedValue = isBrowser ? localStorage.getItem(key) : null;
-  
-  const data = storedValue ? JSON.parse(storedValue) as T : initialValue;
-  const store = writable(data);
+	const isBrowser = typeof window !== 'undefined';
+	const storedValue = isBrowser ? localStorage.getItem(key) : null;
 
-  if (isBrowser) {
-    store.subscribe((value) => {
-      localStorage.setItem(key, JSON.stringify(value));
-    });
-  }
+	const data = storedValue ? (JSON.parse(storedValue) as T) : initialValue;
+	const store = writable(data);
 
-  return store;
+	if (isBrowser) {
+		store.subscribe((value) => {
+			localStorage.setItem(key, JSON.stringify(value));
+		});
+	}
+
+	return store;
 }

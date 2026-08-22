@@ -3,11 +3,10 @@
 /// <reference no-default-lib="true"/>
 /// <reference lib="esnext" />
 /// <reference lib="webworker" />
-
-import type { SongItem } from './database.svelte';
-
 // Ensures that the `$service-worker` import has proper type definitions
 /// <reference types="@sveltejs/kit" />
+import { writable, type Writable } from 'svelte/store';
+import type { SongItem } from './database.svelte';
 
 export interface PlaylistItem extends SongItem {
 	state?: string; // TODO: should actually be an enum
@@ -48,10 +47,14 @@ export interface PlaylistRemove {
 
 export type Command = PlaylistClear | PlaylistInsert | PlaylistRemove;
 
-const state: PlayerrState = {
+const state: Writable<PlayerrState> = writable({
 	currentTrack: 0,
 	playlist: []
-};
+});
+
+state.subscribe((state) => {
+	self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
+});
 
 // Listen for messages from the main thread
 self.onmessage = (event: MessageEvent<Command>) => {
@@ -71,33 +74,37 @@ self.onmessage = (event: MessageEvent<Command>) => {
 	}
 };
 
-function playlistClear(self: Window, _data: PlaylistClear) {
-	state.playlist = [];
-	self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
+function playlistClear(_self: Window, _data: PlaylistClear) {
+	state.update((state) => {
+		state.playlist = [];
+		return state;
+	});
 }
 
-function playlistRemove(self: Window, data: PlaylistRemove) {
-	state.playlist.splice(data.index, 1);
-	self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
+function playlistRemove(_self: Window, data: PlaylistRemove) {
+	state.update((state) => {
+		state.playlist.splice(data.index, 1);
+		return state;
+	});
 }
 
 function clamp(n: number, min: number, max: number): number {
 	return Math.max(Math.min(n, max), min);
 }
 
-function playlistInsert(self: Window, data: PlaylistInsert) {
-	try {
+function playlistInsert(_self: Window, data: PlaylistInsert) {
+	state.update((state) => {
 		const index = clamp(data.index ?? state.playlist.length, 0, state.playlist.length);
 		if (index >= state.playlist.length) {
 			// Append simple path
 			state.playlist.push(...data.items);
-			return;
+			return state;
 		}
 		state.playlist.splice(index, 0, ...data.items);
 		if (state.currentTrack >= index) {
 			state.currentTrack += index;
 		}
-	} finally {
-		self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
-	}
+
+		return state;
+	});
 }
