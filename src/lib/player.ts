@@ -5,11 +5,22 @@
 /// <reference lib="webworker" />
 // Ensures that the `$service-worker` import has proper type definitions
 /// <reference types="@sveltejs/kit" />
-import { writable, type Writable } from 'svelte/store';
+
+import { get, writable, type Writable } from 'svelte/store';
 import type { SongItem } from './database.svelte';
+import { client as nv } from './navidrome-service.svelte';
+
+const PROGRESS_FILE_SUFFIX = '.progress';
+const DOWNLOAD_AOT = 3; // How many songs to download ahead of time.
+
+export enum SongAvailability {
+	Present = 'present',
+	Downloading = 'downloading',
+	Missing = 'missing'
+}
 
 export interface PlaylistItem extends SongItem {
-	state?: string; // TODO: should actually be an enum
+	availability: SongAvailability;
 }
 
 export interface PlayerrState {
@@ -52,11 +63,13 @@ const state: Writable<PlayerrState> = writable({
 	playlist: []
 });
 
+const activeDownloads = new Map<string, unknown>();
+
 state.subscribe((state) => {
 	self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
+	scheduleDownloads(state);
 });
 
-// Listen for messages from the main thread
 self.onmessage = (event: MessageEvent<Command>) => {
 	switch (event.data.type) {
 		case 'PLAYLIST_CLEAR':
@@ -92,15 +105,79 @@ function clamp(n: number, min: number, max: number): number {
 	return Math.max(Math.min(n, max), min);
 }
 
-function playlistInsert(_self: Window, data: PlaylistInsert) {
+async function cleanupSongCache() {
+	// Cleanup partially downloaded files
+	const songCacheRoot = await getSongCacheDirectoryHandle();
+	for await (const entry of songCacheRoot.values()) {
+		if (entry.kind !== 'file') {
+			// Ignore
+			// TODO: This actually shouldn't happen. We probably want to clean that as well.
+		}
+		if (!entry.name.endsWith(PROGRESS_FILE_SUFFIX)) {
+			continue;
+		}
+		const badFile = entry.name.slice(0, -PROGRESS_FILE_SUFFIX.length);
+		// Remove the backing file first in case we crash
+		try {
+			songCacheRoot.removeEntry(badFile);
+		} catch {
+			// Ignore
+			// TODO: make sure this is NotExists, otherwise we are in a bad state
+		}
+		songCacheRoot.removeEntry(entry.name);
+	}
+}
+
+async function getSongCacheDirectoryHandle(): Promise<FileSystemDirectoryHandle> {
+	const opfsRoot = await navigator.storage.getDirectory();
+	return await opfsRoot.getDirectoryHandle('song-cache', { create: true });
+}
+
+async function getCachedSongFileHandle(
+	songId: string,
+	create: boolean = false
+): Promise<FileSystemFileHandle> {
+	const songCacheRoot = await getSongCacheDirectoryHandle();
+	return await songCacheRoot.getFileHandle(`${songId}`, { create: create });
+}
+
+async function createProgressFile(songId: string): Promise<FileSystemFileHandle> {
+	const songCacheRoot = await getSongCacheDirectoryHandle();
+	return await songCacheRoot.getFileHandle(`${songId}${PROGRESS_FILE_SUFFIX}`, { create: true });
+}
+
+async function getSongAvailability(songId: string): Promise<SongAvailability> {
+	try {
+		await getCachedSongFileHandle(songId);
+		if (activeDownloads.has(songId)) {
+			return SongAvailability.Downloading;
+		}
+		return SongAvailability.Present;
+	} catch {
+		// TODO: Check that it is the error we expect
+		return SongAvailability.Missing;
+	}
+}
+
+async function hydrateItems(items: SongItem[]) {
+	return Promise.all(
+		items.map(async (item) => ({
+			availability: await getSongAvailability(item.id),
+			...item
+		}))
+	);
+}
+
+async function playlistInsert(_self: Window, data: PlaylistInsert) {
+	const hydratedItems = await hydrateItems(data.items);
 	state.update((state) => {
 		const index = clamp(data.index ?? state.playlist.length, 0, state.playlist.length);
 		if (index >= state.playlist.length) {
 			// Append simple path
-			state.playlist.push(...data.items);
+			state.playlist.push(...hydratedItems);
 			return state;
 		}
-		state.playlist.splice(index, 0, ...data.items);
+		state.playlist.splice(index, 0, ...hydratedItems);
 		if (state.currentTrack >= index) {
 			state.currentTrack += index;
 		}
@@ -108,3 +185,91 @@ function playlistInsert(_self: Window, data: PlaylistInsert) {
 		return state;
 	});
 }
+
+function updateSongAvailabilityState(songId: string, availability: SongAvailability) {
+	state.update((state) => {
+		for (const item of state.playlist) {
+			if (item.id != songId) {
+				continue;
+			}
+			item.availability = availability;
+		}
+		return state;
+	});
+}
+
+async function downdloadSong(songId: string) {
+	switch (await getSongAvailability(songId)) {
+		case SongAvailability.Downloading:
+		case SongAvailability.Present:
+			return;
+	}
+
+	// Register
+	activeDownloads.set(songId, {});
+	updateSongAvailabilityState(songId, SongAvailability.Downloading);
+	try {
+		const client = get(nv);
+		const response = await client.stream(songId);
+		if (!response.ok) {
+			throw new Error(`HTTP error: status: ${response.status}`);
+		}
+
+		if (!response.body) {
+			throw new Error(`Empty body`);
+		}
+
+		const cacheDir = await getSongCacheDirectoryHandle();
+		// Create this first! Otherwise we may end up in a problematic state.
+		// TOOD: Writeup some stuff at the top about how this works for posterity.
+		const progressFile = await createProgressFile(songId);
+		try {
+			const cacheFile = await createProgressFile(songId);
+			const w = await cacheFile.createWritable();
+			try {
+				const r = response.body.getReader();
+
+				await w.truncate(0);
+				while (true) {
+					const { done, value } = await r.read();
+
+					if (done) {
+						break;
+					}
+
+					await w.write(value);
+				}
+			} catch (e) {
+				await cacheDir.removeEntry(cacheFile.name);
+				throw e;
+			} finally {
+				await w.close();
+			}
+		} finally {
+			await cacheDir.removeEntry(progressFile.name);
+		}
+	} catch (e) {
+		updateSongAvailabilityState(songId, SongAvailability.Missing);
+		throw e;
+	} finally {
+		activeDownloads.delete(songId);
+	}
+	// If we reached this point everything went well
+	updateSongAvailabilityState(songId, SongAvailability.Present);
+}
+
+async function scheduleDownloads(state: PlayerrState) {
+	const newItems = await hydrateItems(state.playlist);
+	const currentTrack = state.currentTrack;
+	const end = Math.min(newItems.length, currentTrack + DOWNLOAD_AOT);
+	for (let i = currentTrack; i < end; i++) {
+		const item = newItems[i];
+		if (item.availability != SongAvailability.Missing) {
+			continue;
+		}
+		downdloadSong(item.id).catch((e) => console.log(e));
+	}
+}
+
+// Initialize
+cleanupSongCache();

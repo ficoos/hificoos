@@ -2,6 +2,8 @@ import { md5 } from './md5';
 
 const VERSION = '1.6.1';
 
+export type SongFormat = 'raw' | 'opus';
+
 export interface Credentials {
 	username: string;
 	password: string;
@@ -157,5 +159,18 @@ export class Client {
 		);
 
 		return resp.searchResult3!;
+	}
+
+	stream(
+		id: string,
+		format: SongFormat = 'raw',
+		maxBitRate: number | null = null
+	): Promise<Response> {
+		const args: Record<string, string> = { id, format };
+		if (maxBitRate) {
+			args['maxBitRate'] = maxBitRate.toString();
+		}
+		const u = this.buildUrl('stream', args);
+		return fetch(u);
 	}
 }

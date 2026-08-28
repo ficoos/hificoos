@@ -4,12 +4,14 @@ import type { Credentials } from './navidrome';
 
 const STORAGE_KEY = 'hificoos-navidrome-creds';
 
-const credentials: Writable<Credentials> = localStorageStore(STORAGE_KEY, {username: '', password: ''});
+export const credentials: Writable<Credentials> = localStorageStore(STORAGE_KEY, {username: '', password: ''});
 
+// TODO: deprecate
 export function getCredentials() {
 	return credentials;
 }
 
+// TODO: deprecate
 export function setCredentials(newCreds: Credentials) {
 	credentials.set(newCreds);
     // TODO: I'm saving the credentials raw to local storage.
