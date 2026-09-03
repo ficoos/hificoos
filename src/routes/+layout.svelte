@@ -5,6 +5,7 @@
 	import { resolve } from '$app/paths';
 	import ServerStatus from '$lib/components/server-status.svelte';
 	import PlaylistSidebar from '$lib/components/playlist-sidebar.svelte';
+	import Player from '$lib/components/player.svelte';
 
 	let { children } = $props();
 </script>
@@ -33,7 +34,7 @@
 			<PlaylistSidebar />
 		</aside>
 	</div>
-	<footer class="flex h-20 shrink-0 items-center bg-gray-800 px-4 text-xs text-white">
-		TODO PLAYER
+	<footer class="flex h-fit shrink-0 items-center bg-gray-800 px-4 text-xs text-white">
+		<Player/>
 	</footer>
 </div>

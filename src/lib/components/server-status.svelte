@@ -1,9 +1,9 @@
 <script lang="ts">
+	import { credentials } from '$lib/auth.svelte';
 	import { Client } from '$lib/navidrome';
-	import { getCredentials } from '$lib/auth.svelte';
 	import AuthSettings from './auth-settings.svelte';
 
-	getCredentials().subscribe((creds) => {
+	credentials.subscribe((creds) => {
 		let client = new Client(import.meta.env.VITE_NAVIDROME_URL, creds);
 		client
 			.ping()

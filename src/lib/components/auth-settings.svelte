@@ -1,15 +1,16 @@
 <script lang="ts">
-	import { getCredentials, setCredentials } from '$lib/auth.svelte';
+	import { credentials } from '$lib/auth.svelte';
 	import { Client } from '$lib/navidrome';
-	const existing = getCredentials();
+	import { get } from 'svelte/store';
+	const existing = get(credentials);
 
-	let username = $state($existing.username ?? '');
-	let password = $state($existing.password ?? '');
+	let username = $state(existing.username ?? '');
+	let password = $state(existing.password ?? '');
 	let status = $state('');
 	let alertClass = $state('');
 
 	function handleSubmit() {
-		setCredentials({ username, password });
+		credentials.set({ username, password })
 	}
 
 	$effect(() => {

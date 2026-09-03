@@ -171,6 +171,8 @@ export class Client {
 			args['maxBitRate'] = maxBitRate.toString();
 		}
 		const u = this.buildUrl('stream', args);
+		// TODO: If there is an authentication issue it returns 0 but with a json file.
+		// I need to peek, otherwise the cache will break
 		return fetch(u);
 	}
 }

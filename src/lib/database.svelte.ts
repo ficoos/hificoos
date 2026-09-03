@@ -1,9 +1,9 @@
 import { Spoke, type ServiceStub } from 'tab-election/hub';
 import HubWorkerUrl from '$lib/db/hub.worker?worker&url';
 import { DatabaseService, type SyncUpdate } from '$lib/db/database-service';
-import { getCredentials } from './auth.svelte';
-import { get, type Readable } from 'svelte/store';
-import { Client, type Credentials } from './navidrome';
+import { credentials } from '$lib/auth.svelte';
+import { get } from 'svelte/store';
+import { Client } from './navidrome';
 
 export interface AlbumItem {
 	id: string;
@@ -30,7 +30,6 @@ export interface SongItem {
 export class DAL {
 	private spoke: Spoke | undefined;
 	readonly db: ServiceStub<DatabaseService>;
-	private credentials: Readable<Credentials>;
 	state = $state<{ ready: boolean; isLeader: boolean; sync?: SyncUpdate; error?: string }>({
 		ready: false,
 		isLeader: false
@@ -54,16 +53,14 @@ export class DAL {
 		this.spoke.onRecoveryFailed(
 			({ attempts }) => (this.state.error = `DB worker recovery failed after ${attempts} attempts`)
 		);
-		this.credentials = getCredentials();
 	}
 
 	private createNavidromeClient() {
-		return new Client(import.meta.env.VITE_NAVIDROME_URL, get(this.credentials));
+		return new Client(import.meta.env.VITE_NAVIDROME_URL, get(credentials));
 	}
 
 	syncDB() {
-		const credentials = get(getCredentials());
-		return this.db.sync(credentials);
+		return this.db.sync(get(credentials));
 	}
 
 	albums(): Promise<AlbumItem[]> {

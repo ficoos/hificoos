@@ -1,165 +1,229 @@
-import { get, type Writable } from 'svelte/store';
+import { get, writable, type Writable } from 'svelte/store';
 import Player from '$lib/player?worker';
-import { SharedControlStateFacade, type Event, type PlaylistClear, type PlaylistInsert, type PlaylistItem, type PlaylistRemove, type SetSharedState } from './player';
+import {
+	type PlayerEvent,
+	type RequestAudio,
+	type FilledBuffer,
+	type SetNext,
+	type Skip
+} from './player';
 import type { SongItem } from './database.svelte';
 import { localStorageStore } from './localstore';
-import { OggOpusDecoderWebWorker, type OggOpusDecodedAudio } from 'ogg-opus-decoder';
+import type { SongAvailability } from './song-cache/song-cache-service';
+import { songCache } from './song-cache.svelte';
 
 export const currentTrack: Writable<number | null> = localStorageStore(
 	'hificoos-current-track',
 	null
 );
-export const playlist: Writable<PlaylistItem[]> = localStorageStore('hificoos-playlist', []);
-let isPlaying = false;
+
+export interface PlayQueueItem extends SongItem {
+	availability: SongAvailability;
+}
+
+export interface PlayQueue {
+	currentTrack: number;
+	queue: PlayQueueItem[];
+}
+
+export enum PlayerState {
+	Paused,
+	Playing,
+	Waiting
+}
+
+export const playQueue: Writable<PlayQueue> = localStorageStore('hificoos-playqueue', {
+	currentTrack: 0,
+	queue: []
+});
+export const playerState: Writable<PlayerState> = writable(PlayerState.Paused);
+let bufferId = 0;
+let firstValidBufferId = 0;
+let nextSampleTime = 0;
 const workerInstance = new Player();
 
 // This can only be initialized as a result of a user input
 let audioCtx: AudioContext | null = null;
 const sampleRate = 48000; // Hz
-const bufferLengthSeconds = 5;
-const ringBufferSize = sampleRate * bufferLengthSeconds;
-const sharedBuffer = new SharedArrayBuffer(ringBufferSize * Float32Array.BYTES_PER_ELEMENT);
-const ringBuffer = new Float32Array(sharedBuffer);
+const numberOfChannels = 2;
+console.assert(numberOfChannels == 2); // The codebase assumes stereo. If this ever changes, it will require extensive refactoring.
 
-const stateBuffer = new SharedArrayBuffer(4 * 3); // 3 integers (read/write/generation pointers)
-const controlState = new Int32Array(stateBuffer);
-const sharedControlStateFacade = new SharedControlStateFacade(controlState)
+const filledBuffers: FilledBuffer[] = [];
 
-workerInstance.onmessage = (event: MessageEvent<Event>) => {
+workerInstance.onmessage = (event: MessageEvent<PlayerEvent>) => {
 	console.log(event.data.type);
 	switch (event.data.type) {
-		case 'STATE_UPDATE':
-			playlist.set(event.data.playlist);
-			currentTrack.set(event.data.currentTrack);
-			isPlaying = event.data.isPlaying;
+		case 'FILLED_BUFFER': {
+			console.assert(audioCtx);
+			filledBuffers.push(event.data);
+			queueAudioBuffer();
+			break;
+		}
 	}
 };
 
 export const playerControl = {
-	playlistClear: () => workerInstance.postMessage({ type: 'PLAYLIST_CLEAR' } as PlaylistClear),
-	playlistInsert: (items: SongItem[], index: number | null = null) =>
-		workerInstance.postMessage({ type: 'PLAYLIST_INSERT', items, index } as PlaylistInsert),
+	playlistClear: () => {
+		playQueue.set({ currentTrack: 0, queue: [] });
+	},
 	playlistRemove: (index: number) =>
-		workerInstance.postMessage({ type: 'PLAYLIST_REMOVE', index: index } as PlaylistRemove),
-	setSharedState: (audioData: Float32Array, controlState: Int32Array) =>
-		workerInstance.postMessage({ type: 'SHARED_STATE_SET', audioData, controlState } as SetSharedState),
+		playQueue.update((pq) => {
+			if (index < 0 || index >= pq.queue.length) {
+				return pq;
+			}
+			if (index === pq.currentTrack) {
+				// TODO: Stop player (or skip?)
+			} else if (index > pq.currentTrack) {
+				pq.currentTrack--;
+			}
+			pq.queue.splice(index, 1);
 
+			return pq;
+		}),
+	playlistInsert: async (items: SongItem[], index: number | null = null) => {
+		const hydratedItems = await hydrateItems(items);
+		playQueue.update((pq) => {
+			index = clamp(index ?? pq.queue.length, 0, pq.queue.length);
+			if (index >= pq.currentTrack) {
+				pq.currentTrack += hydrateItems.length;
+			}
+			if (index >= pq.queue.length) {
+				// Append simple path
+				pq.queue.push(...hydratedItems);
+				return pq;
+			}
+			pq.queue.splice(index, 0, ...hydratedItems);
+			if (pq.currentTrack >= index) {
+				pq.currentTrack += index;
+			}
+
+			return pq;
+		});
+	},
+	play: play,
+	pause: pause
 };
 
-let nextStartTime = 0;
-function playAudio(decoded: OggOpusDecodedAudio) {
-	if (!audioCtx) {
-		audioCtx = new window.AudioContext();
-	}
-
-	// TODO: handle errors
-	const { channelData, samplesDecoded, sampleRate } = decoded;
-
-	// Create an AudioBuffer for the current chunk
-	// channelData is usually an array of Float32Arrays (one per channel)
-	const buffer = audioCtx.createBuffer(channelData.length, samplesDecoded, sampleRate);
-
-	// Copy PCM data into the AudioBuffer
-	for (let i = 0; i < channelData.length; i++) {
-		buffer.copyToChannel(channelData[i], i);
-	}
-
-	const source = audioCtx.createBufferSource();
-	source.buffer = buffer;
-	source.connect(audioCtx.destination);
-
-	// Schedule this chunk to play exactly when the previous one finishes
-	const startTime = Math.max(audioCtx.currentTime, nextStartTime);
-	source.start(startTime);
-
-	// Update our pointer for the next call
-	nextStartTime = startTime + buffer.duration;
+function clamp(n: number, min: number, max: number): number {
+	return Math.max(Math.min(n, max), min);
 }
 
-interface PlayerProcessorsNodeOptions {
-	audioData: Float32Array;
-	controlState: Int32Array;
+async function hydrateItems(items: SongItem[]) {
+	return Promise.all(
+		items.map(async (item) => ({
+			availability: await songCache.getSongAvailability(item.id),
+			...item
+		}))
+	);
 }
 
-class PlayerProcessorsNode extends AudioWorkletProcessor {
-	private _audioData: Float32Array;
-	private _controlState: Int32Array;
+function pause() {
+	audioCtx?.suspend();
+	playerState.set(PlayerState.Paused);
+}
 
-	constructor(
-		options: {
-			processorOptions: PlayerProcessorsNodeOptions;
-		} /* TODO: Figure out if there is a type */
-	) {
-		super();
-		this._audioData = options.processorOptions.audioData;
-		this._controlState = options.processorOptions.controlState;
+function play() {
+	console.log('Play');
+	const pq = get(playQueue);
+	if (pq.queue.length == 0) {
+		console.warn('Asked to play an empty queue');
+		return;
 	}
-	process(
-		_inputs: Float32Array[][],
-		outputs: Float32Array[][],
-		_parameters: Record<string, Float32Array>
-	): boolean {
-		const output = outputs[0];
-		const channel = output[0]; // Get first channel
+	if (pq.currentTrack < pq.queue.length && audioCtx) {
+		audioCtx.resume();
+		return;
+	}
+	// This is a fresh play request
+	pq.currentTrack = 0;
 
-		if (!isPlaying) {
-			// Not playing, feed silence
-			return true;
-		}
+	const nextSongId = pq.queue[pq.currentTrack].id;
 
-		let readIdx = Atomics.load(this._controlState, 1);
-		const writeIdx = Atomics.load(this._controlState, 0);
-		if (readIdx == writeIdx) {
-			// The writer is stalling, feed silence
-			// TODO: add warning since this shouldn't happen
-			return true;
-		}
+	songCache.cacheSong(nextSongId);
 
-		for (let i = 0; i < channel.length; i++) {
-			// TODO: This is where we should modify the volume (or use a Gain node).
-			// Maybe figure out if using a Gain node is worth the hassle
-			channel[i] = this._audioData[readIdx];
-			readIdx = (readIdx + 1) % ringBufferSize;
-		}
+	workerInstance.postMessage({
+		type: 'SET_NEXT',
+		songId: nextSongId
+	} as SetNext);
 
-		Atomics.store(this._controlState, 1, readIdx);
+	workerInstance.postMessage({
+		type: 'SKIP'
+	} as Skip);
 
-		return true;
+	if (audioCtx) {
+		audioCtx.close();
+	}
+
+	audioCtx = new window.AudioContext();
+	// Invalidate all previous buffers
+	firstValidBufferId = bufferId;
+	nextSampleTime = 0;
+	audioCtx.resume();
+	playerState.set(PlayerState.Waiting);
+
+	// TODO: move to a const
+	for (let i = 0; i < 3; i++) {
+		workerInstance.postMessage({
+			type: 'REQUEST_AUDIO',
+			id: ++bufferId
+		} as RequestAudio);
 	}
 }
 
-async function playOggFromOPFS(fileName: string) {
-	const CHUNK_SIZE = 64 * (1 << 10);
-	try {
-		const root = await navigator.storage.getDirectory();
-		const fileHandle = await root.getFileHandle(fileName);
-		const file = await fileHandle.getFile();
-		const fsize = file.size;
-
-		const decoder = new OggOpusDecoderWebWorker({
-			forceStereo: true,
-			speechQualityEnhancement: 'nolace',
-			// @ts-expect-error: The public docs say this parameter exists even though the types don't.
-			sampleRate: sampleRate
-		});
-		try {
-			await decoder.ready;
-			for (let offset = 0; offset < fsize		this._audioData = options.processorOptions.audioData;
-		this._controlState = options.processorOptions.controlState;
-	}; offset += CHUNK_SIZE) {
-				const buff = await file.slice(offset, offset + CHUNK_SIZE).bytes();
-				await decoder.decode(buff).then(playAudio);
-			}
-		} finally {
-			await decoder.free();
-		}
-	} catch (err) {
-		console.error('Error playing audio:', err);
+function queueAudioBuffer() {
+	const dataBuff = filledBuffers.pop();
+	if (!dataBuff) {
+		// Nothing to queue
+		return;
 	}
+	if (dataBuff.length == 0) {
+		return;
+	}
+	if (dataBuff.id < firstValidBufferId) {
+		return;
+	}
+	const duration = dataBuff.length / sampleRate;
+	if (nextSampleTime === 0) {
+		// There is a delay from when the audio context is created and a chunk
+		// is requested until it actually arrives. This tries to account for that.
+		// Using 0 will technically just play the chunk immidately but the next
+		// chunk will start too early (because techincally the first sample started late).
+		nextSampleTime = audioCtx!.currentTime;
+		playerState.set(PlayerState.Playing);
+	}
+	const start = nextSampleTime;
+	nextSampleTime = nextSampleTime + duration;
+	console.log(`queueing audio buffer ${dataBuff.id} with duration ${duration} at ${start}`);
+	const audioBuf = new AudioBuffer({
+		length: dataBuff.length,
+		sampleRate: sampleRate,
+		numberOfChannels: dataBuff.buffers.length
+	});
+	for (let i = 0; i < numberOfChannels; i++) {
+		audioBuf.copyToChannel(dataBuff.buffers[0], 0, 0);
+		audioBuf.copyToChannel(dataBuff.buffers[1], 1, 0);
+	}
+
+	const src = audioCtx!.createBufferSource();
+	src.connect(audioCtx!.destination);
+	src.buffer = audioBuf;
+	if (src.buffer.length > 0) {
+		src.onended = onBufferPlaybackEnded;
+	} else {
+		src.onended = () => {
+			audioCtx?.suspend();
+		};
+	}
+	src.start(start, 0, duration);
 }
 
-// Restore state on "boot"
-playerControl.playlistClear();
-playerControl.playlistInsert(get(playlist));
-playerControl.setSharedState(ringBuffer, controlState);
-// TODO: set current track
+function onBufferPlaybackEnded(this: AudioScheduledSourceNode, _ev: Event) {
+	const self = this as AudioBufferSourceNode;
+	if (!self || !self.buffer) {
+		return;
+	}
+	queueAudioBuffer();
+	workerInstance.postMessage({
+		type: 'REQUEST_AUDIO',
+		id: ++bufferId
+	} as RequestAudio);
+}

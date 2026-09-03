@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { getCredentials } from '$lib/auth.svelte';
 	import { DAL, getDAL, type AlbumItem } from '$lib/database.svelte';
 	import type { SyncUpdate } from '$lib/db/database-service';
 	import { Client } from '$lib/navidrome';
 	import { get } from 'svelte/store';
 	import AlbumGrid from '$lib/components/album-grid.svelte';
+	import { credentials } from '$lib/auth.svelte';
 	const COVER_SIZE = 250;
 
 	let syncProgress: SyncUpdate = $state({
@@ -18,9 +18,8 @@
 		syncProgress = payload;
 	});
 	let albums: AlbumItem[] = $state([]);
-	let creds = getCredentials();
 	dal.albums().then((result) => {
-		const c = get(creds);
+		const c = get(credentials);
 		let client = new Client(import.meta.env.VITE_NAVIDROME_URL, c);
 
 		albums = result

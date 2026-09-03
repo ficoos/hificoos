@@ -16,7 +16,7 @@
 	async function playAlbum(album: AlbumItem) {
 		playerControl.playlistClear();
 		await appendAlbum(album);
-		// TODO: actually play :)
+		playerControl.play();
 	}
 
 	async function queueAlbum(album: AlbumItem) {
@@ -24,7 +24,7 @@
 	}
 
 	async function appendAlbum(album: AlbumItem) {
-		playerControl.playlistInsert(await dal.albumSongs(album.id));
+		await playerControl.playlistInsert(await dal.albumSongs(album.id));
 	}
 </script>
 

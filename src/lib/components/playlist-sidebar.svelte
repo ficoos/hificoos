@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { playerControl, playlist } from '$lib/player-service.svelte';
+	import { playerControl, playQueue } from '$lib/player-service.svelte';
 </script>
 
 <ul class="list rounded-box bg-base-100 shadow-md">
-	{#each $playlist as item, index (index)}
-		<li class="group list-row">
+	{#each $playQueue.queue as item, index (index)}
+		<li class="group list-row {index === $playQueue.currentTrack ? 'bg-accent-content border border-accent' : ''}">
 			<div>
 				<img crossorigin="" class="size-10" alt={item.album_name} src={item.cover_art} />
 			</div>

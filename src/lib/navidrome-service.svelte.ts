@@ -1,5 +1,5 @@
 import { writable, type Readable } from 'svelte/store';
-import { credentials } from './auth.svelte';
+import { credentials } from '$lib/auth.svelte';
 import { Client } from './navidrome';
 
 const wclient = writable(
