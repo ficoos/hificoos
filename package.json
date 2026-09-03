@@ -47,6 +47,7 @@
 		"daisyui": "^5.7.16",
 		"kysely": "^0.29.5",
 		"material-symbols": "^0.46.0",
+		"ogg-opus-decoder": "^1.7.5",
 		"tab-election": "^4.6.2"
 	}
 }

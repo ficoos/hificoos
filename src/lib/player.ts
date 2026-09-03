@@ -9,6 +9,8 @@
 import { get, writable, type Writable } from 'svelte/store';
 import type { SongItem } from './database.svelte';
 import { client as nv } from './navidrome-service.svelte';
+import { OggOpusDecoderWebWorker } from 'ogg-opus-decoder';
+import { assert } from 'console';
 
 const PROGRESS_FILE_SUFFIX = '.progress';
 const DOWNLOAD_AOT = 3; // How many songs to download ahead of time.
@@ -26,6 +28,24 @@ export interface PlaylistItem extends SongItem {
 export interface PlayerrState {
 	currentTrack: number;
 	playlist: PlaylistItem[];
+	isPlaying: boolean;
+}
+
+const SATE_SLOT_WRITE_IDX = 0;
+const SATE_SLOT_READ_IDX = 1;
+const SATE_SLOT_GENERATION = 2;
+
+export class SharedControlStateFacade {
+	private _state: Int32Array;
+
+	constructor(state: Int32Array) {
+		assert(state.length == 3);
+		this._state = state;
+	}
+
+	getReadIdx(): number {
+		return Atomics.load(this._state, SATE_SLOT_READ_IDX);
+	}
 }
 
 // TODO(performance): Sending the entire thing on each update could maybe be expensive.
@@ -39,6 +59,12 @@ export interface PlayerrState {
 type PlayerrStateUpdate = PlayerrState & { type: 'STATE_UPDATE' };
 
 export type Event = PlayerrStateUpdate;
+
+export interface SetSharedState {
+	type: 'SHARED_STATE_SET';
+	audioData: Float32Array;
+	controlState: Int32Array;
+}
 
 export interface PlaylistClear {
 	type: 'PLAYLIST_CLEAR';
@@ -56,11 +82,18 @@ export interface PlaylistRemove {
 	index: number;
 }
 
-export type Command = PlaylistClear | PlaylistInsert | PlaylistRemove;
+export interface SetIsPlaying {
+	type: 'IS_PLAYING_SET';
+	isPlaying: boolean;
+}
+
+export type Command =
+	PlaylistClear | PlaylistInsert | PlaylistRemove | SetIsPlaying | SetSharedState;
 
 const state: Writable<PlayerrState> = writable({
 	currentTrack: 0,
-	playlist: []
+	playlist: [],
+	isPlaying: false
 });
 
 const activeDownloads = new Map<string, unknown>();
@@ -69,6 +102,9 @@ state.subscribe((state) => {
 	self.postMessage({ type: 'STATE_UPDATE', ...state } as PlayerrStateUpdate);
 	scheduleDownloads(state);
 });
+
+let audioData: Float32Array = new Float32Array(48000 * 5);
+let controlState: Int32Array = new Int32Array(2);
 
 self.onmessage = (event: MessageEvent<Command>) => {
 	switch (event.data.type) {
@@ -81,11 +117,22 @@ self.onmessage = (event: MessageEvent<Command>) => {
 		case 'PLAYLIST_REMOVE':
 			playlistRemove(self, event.data);
 			break;
+		case 'IS_PLAYING_SET':
+			setIsPlaying(self, event.data);
+			break;
+		case 'SHARED_STATE_SET':
+			setSharedState(self, event.data);
+			break;
 		default:
 		// TODO: Is this really the best way to handle this? Can we enfore exhustiveness instead?
 		// Ignore
 	}
 };
+
+function setSharedState(_self: Window, _data: SetSharedState) {
+	audioData = _data.audioData;
+	controlState = _data.controlState;
+}
 
 function playlistClear(_self: Window, _data: PlaylistClear) {
 	state.update((state) => {
@@ -97,6 +144,14 @@ function playlistClear(_self: Window, _data: PlaylistClear) {
 function playlistRemove(_self: Window, data: PlaylistRemove) {
 	state.update((state) => {
 		state.playlist.splice(data.index, 1);
+		return state;
+	});
+}
+
+async function setIsPlaying(_self: Window, data: SetIsPlaying) {
+	state.update((state) => {
+		state.isPlaying = data.isPlaying;
+
 		return state;
 	});
 }
@@ -271,5 +326,72 @@ async function scheduleDownloads(state: PlayerrState) {
 	}
 }
 
+async function sleep(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface DecodedAudio {
+	channelData: Float32Array[];
+	samplesDecoded: number;
+}
+
+export interface AudioSource {
+	decode: () => Promise<DecodedAudio>;
+	free: () => Promise<void>;
+}
+
+const SILENCE_CHUNK = 4800;
+const SILENCE_SAMPLES: DecodedAudio = {
+	channelData: [new Float32Array(SILENCE_CHUNK), new Float32Array(SILENCE_CHUNK)],
+	samplesDecoded: SILENCE_CHUNK
+};
+
+class ZeroSource implements AudioSource {
+	decode(): Promise<DecodedAudio> {
+		return Promise.resolve(SILENCE_SAMPLES);
+	}
+
+	free(): Promise<void> {
+		return Promise.resolve();
+	}
+}
+
+async function processAudio() {
+	let writeIdx = 0;
+
+	const decoder = new OggOpusDecoderWebWorker({
+		forceStereo: true,
+		speechQualityEnhancement: 'nolace',
+		// @ts-expect-error: The public docs say this parameter exists even though the types don't.
+		sampleRate: sampleRate
+	});
+
+	await decoder.ready;
+	const f: AudioSource = new ZeroSource();
+
+	while (true) {
+		const currentState = get(state);
+		const readIdx = Atomics.load(controlState, 1);
+
+		// 2. Fetch next chunk of audio
+		const response = await fetch('chunk_part_2.wav');
+		const arrayBuffer = await response.arrayBuffer();
+
+		// 3. Decode (Note: You might need to use a library or
+		// OffscreenCanvas/AudioContext in worker if supported)
+		const decodedPCM = await decodeToRawFloat32(arrayBuffer);
+
+		// 4. Write data into the ring buffer at writeIdx
+		for (let i = 0; i < decodedPCM.length; i++) {
+			audioData[writeIdx] = decodedPCM[i];
+			writeIdx = (writeIdx + 1) % audioData.length;
+		}
+
+		// 5. Update the write pointer atomically so the Worklet sees it
+		Atomics.store(controlState, 0, writeIdx);
+	}
+}
+
 // Initialize
 cleanupSongCache();
+processAudio();
