@@ -14,6 +14,8 @@ export interface FilledBuffer {
 	id: number;
 	buffers: Float32Array<ArrayBuffer>[];
 	length: number;
+	offest: number; // Offset from the beginning of the song (in samples)
+	isBuffering: boolean;
 }
 
 export type PlayerEvent = FilledBuffer;
@@ -39,13 +41,14 @@ const activeDecoder: OggOpusDecoderWebWorker = new OggOpusDecoderWebWorker({
 	speechQualityEnhancement: 'nolace'
 });
 
-await activeDecoder.ready
+await activeDecoder.ready;
 
 // TODO: duplicate
 const sampleRate = 48000; // Hz
 const CHUNK_SIZE = 64_000;
 let activeFile: File | null = null;
 let activeFileOffset: number = 0;
+let activeFileSampleOffset: number = 0;
 let nextSongId: string | null;
 
 const silenceSamples = Math.floor(sampleRate * 0.25);
@@ -82,7 +85,9 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				type: 'FILLED_BUFFER',
 				buffers: silence,
 				id: data.id,
-				length: 0
+				length: 0,
+				isBuffering: true,
+				offest: 0
 			} as FilledBuffer);
 			return;
 		}
@@ -95,19 +100,22 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				type: 'FILLED_BUFFER',
 				buffers: silence,
 				id: data.id,
-				length: silenceSamples
+				length: silenceSamples,
+				isBuffering: true,
+				offest: 0
 			} as FilledBuffer);
 			return;
 		}
 		nextSongId = null;
 		activeFileOffset = 0;
+		activeFileSampleOffset = 0;
 
 		await activeDecoder.reset();
 		await activeDecoder.ready;
 	}
 
 	const buff = await activeFile.slice(activeFileOffset, activeFileOffset + CHUNK_SIZE).bytes();
-	console.log(`[player] read ${buff.byteLength} bytes`)
+	console.log(`[player] read ${buff.byteLength} bytes`);
 	if (buff.length === 0) {
 		activeFile = null;
 		// Move to next track
@@ -115,7 +123,8 @@ async function requestAudio(self: Window, data: RequestAudio) {
 	}
 	activeFileOffset += buff.length;
 	const decodedAudio = await activeDecoder.decode(buff);
-	console.log(`[player] decoded ${decodedAudio.samplesDecoded} samples`)
+	activeFileSampleOffset += decodedAudio.samplesDecoded;
+	console.log(`[player] decoded ${decodedAudio.samplesDecoded} samples`);
 	if (decodedAudio.samplesDecoded === 0) {
 		// We only got partial frames, try decoding another slice
 		return requestAudio(self, data);
@@ -125,17 +134,19 @@ async function requestAudio(self: Window, data: RequestAudio) {
 		type: 'FILLED_BUFFER',
 		buffers: decodedAudio.channelData,
 		id: data.id,
-		length: decodedAudio.samplesDecoded
+		length: decodedAudio.samplesDecoded,
+		isBuffering: false,
+		offest: activeFileSampleOffset
 	} as FilledBuffer);
 }
 
 async function setNext(_self: Window & typeof globalThis, data: SetNext) {
-	console.log(`[player] set next ${data.songId}`)
+	console.log(`[player] set next ${data.songId}`);
 	nextSongId = data.songId;
 }
 
 function skip(_self: Window & typeof globalThis, _data: Skip) {
-	console.log(`[player] skip`)
+	console.log(`[player] skip`);
 	activeFile = null;
 }
 

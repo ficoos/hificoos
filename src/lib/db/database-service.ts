@@ -126,7 +126,8 @@ export class DatabaseService implements Service {
 				'song.track',
 				'song.disc_number',
 				'album.display_artist',
-				'song.title'
+				'song.title',
+				'song.duration'
 			])
 			.where('album.id', '==', albumId)
 			.orderBy('song.disc_number', 'asc')

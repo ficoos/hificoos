@@ -37,6 +37,10 @@ export const playQueue: Writable<PlayQueue> = localStorageStore('hificoos-playqu
 	queue: []
 });
 export const playerState: Writable<PlayerState> = writable(PlayerState.Paused);
+export const playerPosition: Writable<{ position: number; duration: number }> = writable({
+	position: 0,
+	duration: 0
+});
 let bufferId = 0;
 let firstValidBufferId = 0;
 let nextSampleTime = 0;
@@ -131,18 +135,22 @@ function play() {
 	}
 	if (pq.currentTrack < pq.queue.length && audioCtx) {
 		audioCtx.resume();
+		// TODO: There is a race here, if we pause while waiting
+		// and resume it will be playing. It's not that bad because the UI
+		// will reorient itself on next buffer but still shuold work.
+		playerState.set(PlayerState.Playing);
 		return;
 	}
 	// This is a fresh play request
 	pq.currentTrack = 0;
 
-	const nextSongId = pq.queue[pq.currentTrack].id;
+	const nextSong = pq.queue[pq.currentTrack];
 
-	songCache.cacheSong(nextSongId);
+	songCache.cacheSong(nextSong.id);
 
 	workerInstance.postMessage({
 		type: 'SET_NEXT',
-		songId: nextSongId
+		songId: nextSong.id
 	} as SetNext);
 
 	workerInstance.postMessage({
@@ -159,6 +167,7 @@ function play() {
 	nextSampleTime = 0;
 	audioCtx.resume();
 	playerState.set(PlayerState.Waiting);
+	playerPosition.set({ position: 0, duration: nextSong.duration });
 
 	// TODO: move to a const
 	for (let i = 0; i < 3; i++) {
@@ -213,6 +222,11 @@ function queueAudioBuffer() {
 			audioCtx?.suspend();
 		};
 	}
+	playerState.set(dataBuff.isBuffering ? PlayerState.Waiting : PlayerState.Playing);
+	playerPosition.update((p) => {
+		p.position = dataBuff.offest / sampleRate;
+		return p;
+	});
 	src.start(start, 0, duration);
 }
 

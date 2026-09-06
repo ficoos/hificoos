@@ -25,6 +25,7 @@ export interface SongItem {
 	album_name: string;
 	track: number;
 	disc_number: number;
+	duration: number;
 }
 
 export class DAL {
