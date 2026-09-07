@@ -7,16 +7,16 @@
 		playQueue
 	} from '$lib/player-service.svelte';
 
-	const current = $playQueue.queue.at($playQueue.currentTrack);
+	const current = $derived($playQueue.queue.at($playQueue.currentTrack));
 </script>
 
-<div class="flex w-full p-2">
+<div class="flex max-lg:flex-col w-full p-2">
 	<div class="flex flex-1 flex-row items-center gap-2">
 		{#if current}
 			<div>
 				<img
 					crossorigin=""
-					class="size-20 border border-accent"
+					class="min-w-20 size-20 border border-accent"
 					alt={current.album_name}
 					src={current.cover_art}
 				/>
@@ -34,7 +34,7 @@
 			</div>
 		{/if}
 	</div>
-	<div class="flex flex-2 flex-col gap-2">
+	<div class="flex flex-1 flex-col gap-2">
 		<div class="flex flex-row items-center gap-2">
 			<span class="cursor-default">00:00</span>
 			{#if $playerState === PlayerState.Waiting}
