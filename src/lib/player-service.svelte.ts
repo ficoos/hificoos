@@ -12,10 +12,7 @@ import { localStorageStore } from './localstore';
 import type { SongAvailability } from './song-cache/song-cache-service';
 import { songCache } from './song-cache.svelte';
 
-export const currentTrack: Writable<number | null> = localStorageStore(
-	'hificoos-current-track',
-	null
-);
+export const currentTrack: Writable<number> = localStorageStore('hificoos-current-track', 0);
 
 export interface PlayQueueItem extends SongItem {
 	availability: SongAvailability;
@@ -44,7 +41,9 @@ export const playerPosition: Writable<{ position: number; duration: number }> = 
 let bufferId = 0;
 let firstValidBufferId = 0;
 let nextSampleTime = 0;
+let skipNextFirstFrame = false;
 const workerInstance = new Player();
+const DOWNLOAD_AOT = 3;
 
 // This can only be initialized as a result of a user input
 let audioCtx: AudioContext | null = null;
@@ -53,6 +52,19 @@ const numberOfChannels = 2;
 console.assert(numberOfChannels == 2); // The codebase assumes stereo. If this ever changes, it will require extensive refactoring.
 
 const filledBuffers: FilledBuffer[] = [];
+
+playQueue.subscribe(async (pq) => {
+	const start = pq.currentTrack < pq.queue.length ? pq.currentTrack : 0;
+	const end = Math.min(start + DOWNLOAD_AOT, pq.queue.length - 1);
+	for (let i = start; i < end; i++) {
+		songCache.cacheSong(pq.queue[i].id);
+	}
+	const nextSong = pq.queue.at(start + 1);
+	workerInstance.postMessage({
+		type: 'SET_NEXT',
+		songId: nextSong?.id
+	} as SetNext);
+});
 
 workerInstance.onmessage = (event: MessageEvent<PlayerEvent>) => {
 	console.log(event.data.type);
@@ -70,26 +82,28 @@ export const playerControl = {
 	playlistClear: () => {
 		playQueue.set({ currentTrack: 0, queue: [] });
 	},
-	playlistRemove: (index: number) =>
+	playlistRemove: (index: number) => {
+		if (index === get(playQueue).currentTrack) {
+			skipNext();
+		}
 		playQueue.update((pq) => {
 			if (index < 0 || index >= pq.queue.length) {
 				return pq;
 			}
-			if (index === pq.currentTrack) {
-				// TODO: Stop player (or skip?)
-			} else if (index > pq.currentTrack) {
+			if (index < pq.currentTrack) {
 				pq.currentTrack--;
 			}
 			pq.queue.splice(index, 1);
 
 			return pq;
-		}),
+		});
+	},
 	playlistInsert: async (items: SongItem[], index: number | null = null) => {
 		const hydratedItems = await hydrateItems(items);
 		playQueue.update((pq) => {
 			index = clamp(index ?? pq.queue.length, 0, pq.queue.length);
-			if (index >= pq.currentTrack) {
-				pq.currentTrack += hydrateItems.length;
+			if (index <= pq.currentTrack) {
+				pq.currentTrack += hydratedItems.length;
 			}
 			if (index >= pq.queue.length) {
 				// Append simple path
@@ -105,7 +119,8 @@ export const playerControl = {
 		});
 	},
 	play: play,
-	pause: pause
+	pause: pause,
+	skipNext: skipNext
 };
 
 function clamp(n: number, min: number, max: number): number {
@@ -121,19 +136,43 @@ async function hydrateItems(items: SongItem[]) {
 	);
 }
 
+function skipNext() {
+	const pq = get(playQueue);
+	pq.currentTrack++;
+	const track = pq.queue.at(pq.currentTrack);
+	if (!track) {
+		stop();
+		return;
+	}
+	play(pq.currentTrack);
+}
+
+function stop() {
+	audioCtx?.close();
+	audioCtx = null;
+	firstValidBufferId = bufferId;
+	playQueue.update((pq) => {
+		pq.currentTrack = pq.queue.length;
+		return pq;
+	});
+	playerPosition.set({ duration: 0, position: 0 });
+	playerState.set(PlayerState.Paused);
+}
+
 function pause() {
 	audioCtx?.suspend();
 	playerState.set(PlayerState.Paused);
 }
 
-function play() {
+function play(index: number | null = null) {
 	console.log('Play');
 	const pq = get(playQueue);
 	if (pq.queue.length == 0) {
 		console.warn('Asked to play an empty queue');
 		return;
 	}
-	if (pq.currentTrack < pq.queue.length && audioCtx) {
+
+	if (index == null && pq.currentTrack < pq.queue.length && audioCtx) {
 		audioCtx.resume();
 		// TODO: There is a race here, if we pause while waiting
 		// and resume it will be playing. It's not that bad because the UI
@@ -141,10 +180,19 @@ function play() {
 		playerState.set(PlayerState.Playing);
 		return;
 	}
-	// This is a fresh play request
-	pq.currentTrack = 0;
 
-	const nextSong = pq.queue[pq.currentTrack];
+	index ??= pq.currentTrack;
+	if (index < 0 || index >= pq.queue.length) {
+		index = 0;
+	}
+
+	// This is a fresh play request
+	playQueue.update((pq) => {
+		pq.currentTrack = index;
+		return pq;
+	});
+
+	const nextSong = pq.queue[index];
 
 	songCache.cacheSong(nextSong.id);
 
@@ -165,6 +213,7 @@ function play() {
 	// Invalidate all previous buffers
 	firstValidBufferId = bufferId;
 	nextSampleTime = 0;
+	skipNextFirstFrame = true;
 	audioCtx.resume();
 	playerState.set(PlayerState.Waiting);
 	playerPosition.set({ position: 0, duration: nextSong.duration });
@@ -184,9 +233,6 @@ function queueAudioBuffer() {
 		// Nothing to queue
 		return;
 	}
-	if (dataBuff.length == 0) {
-		return;
-	}
 	if (dataBuff.id < firstValidBufferId) {
 		return;
 	}
@@ -203,7 +249,7 @@ function queueAudioBuffer() {
 	nextSampleTime = nextSampleTime + duration;
 	console.log(`queueing audio buffer ${dataBuff.id} with duration ${duration} at ${start}`);
 	const audioBuf = new AudioBuffer({
-		length: dataBuff.length,
+		length: dataBuff.length == 0 ? 1 : dataBuff.length,
 		sampleRate: sampleRate,
 		numberOfChannels: dataBuff.buffers.length
 	});
@@ -213,21 +259,45 @@ function queueAudioBuffer() {
 	}
 
 	const src = audioCtx!.createBufferSource();
+	const startEvent = audioCtx!.createBufferSource();
+	startEvent.connect(audioCtx!.destination);
 	src.connect(audioCtx!.destination);
 	src.buffer = audioBuf;
-	if (src.buffer.length > 0) {
+	startEvent.buffer = new AudioBuffer({ length: 1, sampleRate: sampleRate, numberOfChannels: 1 });
+	if (dataBuff.length > 0) {
 		src.onended = onBufferPlaybackEnded;
 	} else {
 		src.onended = () => {
-			audioCtx?.suspend();
+			stop();
 		};
 	}
-	playerState.set(dataBuff.isBuffering ? PlayerState.Waiting : PlayerState.Playing);
-	playerPosition.update((p) => {
-		p.position = dataBuff.offest / sampleRate;
-		return p;
-	});
+
+	let isFirstFrameOfSong = dataBuff.isFirstFrameOfSong;
+	startEvent.onended = () => {
+		if (isFirstFrameOfSong && skipNextFirstFrame) {
+			skipNextFirstFrame = false;
+			isFirstFrameOfSong = false;
+		}
+		if (isFirstFrameOfSong) {
+			playQueue.update((pq) => {
+				pq.currentTrack++;
+				return pq;
+			});
+			const pq = get(playQueue);
+			const song = pq.queue.at(pq.currentTrack);
+			if (song) {
+				playerPosition.set({ position: 0, duration: song.duration });
+			}
+		}
+
+		playerState.set(dataBuff.isBuffering ? PlayerState.Waiting : PlayerState.Playing);
+		playerPosition.update((p) => {
+			p.position = dataBuff.offest / sampleRate;
+			return p;
+		});
+	};
 	src.start(start, 0, duration);
+	startEvent.start(start, 0);
 }
 
 function onBufferPlaybackEnded(this: AudioScheduledSourceNode, _ev: Event) {

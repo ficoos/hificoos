@@ -17,8 +17,10 @@ export enum SongAvailability {
 	Missing = 'missing'
 }
 
+let requestId = 0
+
 const PROGRESS_FILE_SUFFIX = '.progress';
-const activeDownloads = new Map<string, unknown>();
+const activeDownloads = new Map<string, number>();
 interface SongCacheEvents {
 	'availability-changed': {
 		availability: SongAvailability;
@@ -63,7 +65,10 @@ export class SongCacheService implements Service {
 		}
 
 		// Register
-		activeDownloads.set(songId, {});
+		const rid = ++requestId;
+		if (activeDownloads.getOrInsert(songId, rid) !== rid) {
+			return
+		}
 		console.log(`[song-cache] Cache request for ${songId}`);
 		this._postSongAvailability(songId, SongAvailability.Downloading);
 		let bytesWritten = 0;

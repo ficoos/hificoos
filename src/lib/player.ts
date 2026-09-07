@@ -16,6 +16,7 @@ export interface FilledBuffer {
 	length: number;
 	offest: number; // Offset from the beginning of the song (in samples)
 	isBuffering: boolean;
+	isFirstFrameOfSong: boolean;
 }
 
 export type PlayerEvent = FilledBuffer;
@@ -27,7 +28,7 @@ export interface RequestAudio {
 
 export interface SetNext {
 	type: 'SET_NEXT';
-	songId: string;
+	songId?: string;
 }
 
 export interface Skip {
@@ -77,6 +78,7 @@ self.onmessage = (event: MessageEvent<Command>) =>
 
 async function requestAudio(self: Window, data: RequestAudio) {
 	console.log(`requestAudio ${activeFile?.name}`);
+	let isFirstFrameOfSong = false;
 	if (!activeFile) {
 		console.log(`switch track`);
 		if (!nextSongId) {
@@ -87,7 +89,8 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				id: data.id,
 				length: 0,
 				isBuffering: true,
-				offest: 0
+				offest: 0,
+				isFirstFrameOfSong: true
 			} as FilledBuffer);
 			return;
 		}
@@ -102,13 +105,15 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				id: data.id,
 				length: silenceSamples,
 				isBuffering: true,
-				offest: 0
+				offest: 0,
+				isFirstFrameOfSong: false
 			} as FilledBuffer);
 			return;
 		}
 		nextSongId = null;
 		activeFileOffset = 0;
 		activeFileSampleOffset = 0;
+		isFirstFrameOfSong = true;
 
 		await activeDecoder.reset();
 		await activeDecoder.ready;
@@ -136,13 +141,14 @@ async function requestAudio(self: Window, data: RequestAudio) {
 		id: data.id,
 		length: decodedAudio.samplesDecoded,
 		isBuffering: false,
-		offest: activeFileSampleOffset
+		offest: activeFileSampleOffset,
+		isFirstFrameOfSong: isFirstFrameOfSong
 	} as FilledBuffer);
 }
 
 async function setNext(_self: Window & typeof globalThis, data: SetNext) {
 	console.log(`[player] set next ${data.songId}`);
-	nextSongId = data.songId;
+	nextSongId = data.songId ?? null;
 }
 
 function skip(_self: Window & typeof globalThis, _data: Skip) {
