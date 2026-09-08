@@ -1,7 +1,6 @@
 import { Spoke } from 'tab-election/hub';
 import HubWorkerUrl from '$lib/song-cache/hub.worker?worker&url';
 import { SongCacheService } from './song-cache/song-cache-service';
-import { getCachedSongFileHandle } from './song-cache/song-cache-common';
 import { credentials } from '$lib/auth.svelte';
 
 const spoke = new Spoke({
@@ -10,11 +9,5 @@ const spoke = new Spoke({
 	version: '1'
 });
 
-const service = spoke.getService<SongCacheService>('song-cache');
-credentials.subscribe((creds) => service.updateCredentials(creds));
-
-export const songCache = {
-	getSongAvailability: service.getSongAvailability,
-	cacheSong: service.cacheSong,
-	getCachedSongFileHandle: getCachedSongFileHandle
-};
+export const songCache = spoke.getService<SongCacheService>('hificoos-song-cache');
+credentials.subscribe((creds) => songCache.updateCredentials(creds));

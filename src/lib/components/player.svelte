@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatSongDuration } from '$lib/formatutils';
 	import {
 		playerControl,
 		playerPosition,
@@ -11,12 +12,6 @@
 	const ELEM_ID_ELAPSED_LABEL = 'label-time-elapsed';
 	const ELEM_ID_DURATION_LABEL = 'label-time-duration';
 
-	const formatTime = (time: number): string => {
-		const minutes = Math.floor(time / 60);
-		const seconds = time % 60;
-		return `${minutes.toString().padStart(2, '0')}:${seconds.toFixed(0).padStart(2, '0')}`;
-	};
-
 	const current = $derived($playQueue.queue.at($playQueue.currentTrack));
 	const updateProgress = () => {
 		// Even though usually I am all for just updating things that are
@@ -27,14 +22,14 @@
 		const pos = Math.max(pp.position + (playerControl.getCurrentTime() - pp.base), 0);
 		const elaplsedElem = document.getElementById(ELEM_ID_ELAPSED_LABEL) as HTMLSpanElement;
 		if (elaplsedElem) {
-			const elapsedText = formatTime(pos);
+			const elapsedText = formatSongDuration(pos);
 			if (elaplsedElem.textContent != elapsedText) {
 				elaplsedElem.textContent = elapsedText;
 			}
 		}
 		const durationElem = document.getElementById(ELEM_ID_DURATION_LABEL) as HTMLSpanElement;
 		if (durationElem) {
-			const durationText = formatTime(pp.duration);
+			const durationText = formatSongDuration(pp.duration);
 			if (durationElem.textContent != durationText) {
 				durationElem.textContent = durationText;
 			}

@@ -17,7 +17,7 @@ export enum SongAvailability {
 	Missing = 'missing'
 }
 
-let requestId = 0
+let requestId = 0;
 
 const PROGRESS_FILE_SUFFIX = '.progress';
 const activeDownloads = new Map<string, number>();
@@ -29,7 +29,7 @@ interface SongCacheEvents {
 }
 
 export class SongCacheService implements Service {
-	readonly namespace = 'song-cache' as const;
+	readonly namespace = 'hificoos-song-cache' as const;
 	readonly __events?: SongCacheEvents;
 	private hub?: Hub;
 	private nv: Client = new Client(import.meta.env.VITE_NAVIDROME_URL, {
@@ -67,7 +67,7 @@ export class SongCacheService implements Service {
 		// Register
 		const rid = ++requestId;
 		if (activeDownloads.getOrInsert(songId, rid) !== rid) {
-			return
+			return;
 		}
 		console.log(`[song-cache] Cache request for ${songId}`);
 		this._postSongAvailability(songId, SongAvailability.Downloading);
@@ -82,11 +82,12 @@ export class SongCacheService implements Service {
 			if (!response.body) {
 				throw new Error(`Empty body`);
 			}
-
+			
 			const cacheDir = await getSongCacheDirectoryHandle();
 			// Create this first! Otherwise we may end up in a problematic state.
 			// TOOD: Writeup some stuff at the top about how this works for posterity.
 			const progressFile = await createProgressFile(songId);
+			console.log(1)
 			try {
 				const cacheFile = await getCachedSongFileHandle(songId, true);
 				const w = await cacheFile.createWritable();
@@ -131,7 +132,7 @@ export class SongCacheService implements Service {
 
 	private _postSongAvailability(songId: string, availability: SongAvailability) {
 		// TODO: make typesafe
-		this.hub!.emit(this.namespace, 'avalability-changed', { songId, availability });
+		this.hub!.emit(this.namespace, 'availability-changed', { songId, availability });
 	}
 }
 
@@ -161,6 +162,7 @@ async function cleanupSongCache() {
 async function createProgressFile(songId: string): Promise<FileSystemFileHandle> {
 	const songCacheRoot = await getSongCacheDirectoryHandle();
 	return await songCacheRoot.getFileHandle(`${songId}${PROGRESS_FILE_SUFFIX}`, { create: true });
+	console.log(2)
 }
 
 async function getSongAvailability(songId: string): Promise<SongAvailability> {

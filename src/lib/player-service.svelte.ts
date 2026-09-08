@@ -81,6 +81,18 @@ workerInstance.onmessage = (event: MessageEvent<PlayerEvent>) => {
 	}
 };
 
+songCache.on('availability-changed', (ev) => {
+	playQueue.update((pq) => {
+		for (const item of pq.queue) {
+			if (item.id != ev.songId) {
+				continue;
+			}
+			item.availability = ev.availability;
+		}
+		return pq;
+	});
+});
+
 export const playerControl = {
 	playlistClear: () => {
 		playQueue.set({ currentTrack: 0, queue: [] });

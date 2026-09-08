@@ -1,13 +1,9 @@
 // TOOD: This file has some duplication with the service.
 export const PROGRESS_FILE_SUFFIX = '.progress';
 
-let songCacheDirHandle: FileSystemDirectoryHandle | null = null;
 export async function getSongCacheDirectoryHandle(): Promise<FileSystemDirectoryHandle> {
 	const opfsRoot = await navigator.storage.getDirectory();
-	if (!songCacheDirHandle) {
-		songCacheDirHandle = await opfsRoot.getDirectoryHandle('song-cache', { create: true });
-	}
-	return songCacheDirHandle;
+	return await opfsRoot.getDirectoryHandle('song-cache', { create: true });
 }
 
 async function hasProgressFile(songId: string) {
