@@ -34,10 +34,13 @@ export const playQueue: Writable<PlayQueue> = localStorageStore('hificoos-playqu
 	queue: []
 });
 export const playerState: Writable<PlayerState> = writable(PlayerState.Paused);
-export const playerPosition: Writable<{ position: number; duration: number }> = writable({
-	position: 0,
-	duration: 0
-});
+export const playerPosition: Writable<{ base: number; position: number; duration: number }> =
+	writable({
+		position: 0,
+		duration: 0,
+		base: 0
+	});
+
 let bufferId = 0;
 let firstValidBufferId = 0;
 let nextSampleTime = 0;
@@ -120,7 +123,8 @@ export const playerControl = {
 	},
 	play: play,
 	pause: pause,
-	skipNext: skipNext
+	skipNext: skipNext,
+	getCurrentTime: () => audioCtx?.currentTime ?? 0
 };
 
 function clamp(n: number, min: number, max: number): number {
@@ -155,7 +159,7 @@ function stop() {
 		pq.currentTrack = pq.queue.length;
 		return pq;
 	});
-	playerPosition.set({ duration: 0, position: 0 });
+	playerPosition.set({ base: 0, duration: 0, position: 0 });
 	playerState.set(PlayerState.Paused);
 }
 
@@ -216,7 +220,7 @@ function play(index: number | null = null) {
 	skipNextFirstFrame = true;
 	audioCtx.resume();
 	playerState.set(PlayerState.Waiting);
-	playerPosition.set({ position: 0, duration: nextSong.duration });
+	playerPosition.set({ base: 0, position: 0, duration: nextSong.duration });
 
 	// TODO: move to a const
 	for (let i = 0; i < 3; i++) {
@@ -286,18 +290,19 @@ function queueAudioBuffer() {
 			const pq = get(playQueue);
 			const song = pq.queue.at(pq.currentTrack);
 			if (song) {
-				playerPosition.set({ position: 0, duration: song.duration });
+				playerPosition.set({ base: 0, position: 0, duration: song.duration });
 			}
 		}
 
 		playerState.set(dataBuff.isBuffering ? PlayerState.Waiting : PlayerState.Playing);
 		playerPosition.update((p) => {
 			p.position = dataBuff.offest / sampleRate;
+			p.base = start;
 			return p;
 		});
 	};
 	src.start(start, 0, duration);
-	startEvent.start(start, 0);
+	startEvent.start(start, 0, 0);
 }
 
 function onBufferPlaybackEnded(this: AudioScheduledSourceNode, _ev: Event) {

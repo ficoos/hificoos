@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import {
 		playerControl,
 		playerPosition,
@@ -7,16 +7,62 @@
 		playQueue
 	} from '$lib/player-service.svelte';
 
+	const PLAYER_PROGRESS_ID = 'player-progress';
+	const ELEM_ID_ELAPSED_LABEL = 'label-time-elapsed';
+	const ELEM_ID_DURATION_LABEL = 'label-time-duration';
+
+	const formatTime = (time: number): string => {
+		const minutes = Math.floor(time / 60);
+		const seconds = time % 60;
+		return `${minutes.toString().padStart(2, '0')}:${seconds.toFixed(0).padStart(2, '0')}`;
+	};
+
 	const current = $derived($playQueue.queue.at($playQueue.currentTrack));
+	const updateProgress = () => {
+		// Even though usually I am all for just updating things that are
+		// idempotent. Here we check if the values on the elements have changed
+		// before applying because some web layout engines will do a refresh even
+		// if nothing changed.
+		const pp = $playerPosition;
+		const pos = Math.max(pp.position + (playerControl.getCurrentTime() - pp.base), 0);
+		const elaplsedElem = document.getElementById(ELEM_ID_ELAPSED_LABEL) as HTMLSpanElement;
+		if (elaplsedElem) {
+			const elapsedText = formatTime(pos);
+			if (elaplsedElem.textContent != elapsedText) {
+				elaplsedElem.textContent = elapsedText;
+			}
+		}
+		const durationElem = document.getElementById(ELEM_ID_DURATION_LABEL) as HTMLSpanElement;
+		if (durationElem) {
+			const durationText = formatTime(pp.duration);
+			if (durationElem.textContent != durationText) {
+				durationElem.textContent = durationText;
+			}
+		}
+
+		const progressElem = document.getElementById(PLAYER_PROGRESS_ID) as HTMLProgressElement;
+		if (progressElem) {
+			if (progressElem.value != pos) {
+				progressElem.value = pos;
+			}
+			if (progressElem.max != pp.duration) {
+				progressElem.max = pp.duration;
+			}
+		}
+
+		window.requestAnimationFrame(updateProgress);
+	};
+
+	updateProgress();
 </script>
 
-<div class="flex max-lg:flex-col w-full p-2">
+<div class="flex w-full p-2 max-lg:flex-col">
 	<div class="flex flex-1 flex-row items-center gap-2">
 		{#if current}
 			<div>
 				<img
 					crossorigin=""
-					class="min-w-20 size-20 border border-accent"
+					class="size-20 min-w-20 border border-accent"
 					alt={current.album_name}
 					src={current.cover_art}
 				/>
@@ -36,17 +82,13 @@
 	</div>
 	<div class="flex flex-1 flex-col gap-2">
 		<div class="flex flex-row items-center gap-2">
-			<span class="cursor-default">00:00</span>
+			<span id={ELEM_ID_ELAPSED_LABEL} class="cursor-default">00:00</span>
 			{#if $playerState === PlayerState.Waiting}
 				<progress class="progress progress-primary"></progress>
 			{:else}
-				<progress
-					class="progress progress-primary"
-					value={$playerPosition.position}
-					max={$playerPosition.duration}
-				></progress>
+				<progress id={PLAYER_PROGRESS_ID} class="progress progress-primary"></progress>
 			{/if}
-			<span class="cursor-default">00:00</span>
+			<span id={ELEM_ID_DURATION_LABEL} class="cursor-default">00:00</span>
 		</div>
 		<div class="flex items-center justify-center gap-2">
 			<button

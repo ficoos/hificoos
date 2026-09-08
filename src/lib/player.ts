@@ -128,7 +128,6 @@ async function requestAudio(self: Window, data: RequestAudio) {
 	}
 	activeFileOffset += buff.length;
 	const decodedAudio = await activeDecoder.decode(buff);
-	activeFileSampleOffset += decodedAudio.samplesDecoded;
 	console.log(`[player] decoded ${decodedAudio.samplesDecoded} samples`);
 	if (decodedAudio.samplesDecoded === 0) {
 		// We only got partial frames, try decoding another slice
@@ -144,6 +143,10 @@ async function requestAudio(self: Window, data: RequestAudio) {
 		offest: activeFileSampleOffset,
 		isFirstFrameOfSong: isFirstFrameOfSong
 	} as FilledBuffer);
+	// Advance *after* sending the progress since this will now
+	// point to the *end* of the current buffer, which is the start
+	// of the next one.
+	activeFileSampleOffset += decodedAudio.samplesDecoded;
 }
 
 async function setNext(_self: Window & typeof globalThis, data: SetNext) {
