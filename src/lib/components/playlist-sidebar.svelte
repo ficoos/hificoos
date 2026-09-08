@@ -14,21 +14,14 @@
 			<div>
 				<img crossorigin="" class="size-15" alt={item.album_name} src={item.cover_art} />
 			</div>
-			<div class="flex min-w-0 flex-col">
+			<div class="flex min-w-0 flex-col justify-center">
 				<div class="cursor-default truncate text-ellipsis">{item.title}</div>
-				<div class="cursor-default truncate text-xs font-semibold text-ellipsis opacity-60">
+				<div class="cursor-default truncate text-xs text-ellipsis opacity-60">
 					{item.display_artist} ● {item.album_name}
 				</div>
-				<div class="cursor-default truncate text-xs text-ellipsis opacity-60">
-					<span class="material-symbols-outlined align-middle text-xs! pr-1">Schedule</span>{formatSongDuration(item.duration)} ●
-					{#if item.availability === SongAvailability.Downloading}
-						<span class="material-symbols-outlined align-middle text-xs! pr-1">Downloading</span>						
-					{:else if item.availability === SongAvailability.Present}
-						<span class="material-symbols-outlined align-middle text-xs! pr-1">Download</span>						
-					{:else if item.availability === SongAvailability.Missing}
-						<span class="material-symbols-outlined align-middle text-xs! pr-1">Circle</span>						
-
-					{/if}
+				<div class="cursor-default truncate text-xs text-ellipsis opacity-60 inline-flex align-center">
+					<span class="material-symbols-outlined align-middle text-xs!">Schedule</span>
+					{formatSongDuration(item.duration)}
 				</div>
 			</div>
 			<button
