@@ -80,13 +80,13 @@
 			</div>
 		{/if}
 	</div>
-	<div class="flex flex-1 flex-col gap-2">
+	<div class="flex flex-1 flex-col gap-2 p-2">
 		<div class="flex flex-row items-center gap-2">
 			<span id={ELEM_ID_ELAPSED_LABEL} class="cursor-default">00:00</span>
 			{#if $playerState === PlayerState.Waiting}
 				<progress class="progress progress-primary"></progress>
 			{:else}
-				<progress id={PLAYER_PROGRESS_ID} class="progress progress-primary"></progress>
+				<progress id={PLAYER_PROGRESS_ID} class="progress progress-primary" value="0"></progress>
 			{/if}
 			<span id={ELEM_ID_DURATION_LABEL} class="cursor-default">00:00</span>
 		</div>

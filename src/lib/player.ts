@@ -16,7 +16,7 @@ export interface FilledBuffer {
 	length: number;
 	offest: number; // Offset from the beginning of the song (in samples)
 	isBuffering: boolean;
-	isFirstFrameOfSong: boolean;
+	isLastFrameOfSong: boolean;
 }
 
 export type PlayerEvent = FilledBuffer;
@@ -50,6 +50,7 @@ const CHUNK_SIZE = 64_000;
 let activeFile: File | null = null;
 let activeFileOffset: number = 0;
 let activeFileSampleOffset: number = 0;
+let currentSongId: string | null;
 let nextSongId: string | null;
 
 const silenceSamples = Math.floor(sampleRate * 0.25);
@@ -65,7 +66,7 @@ self.onmessage = (event: MessageEvent<Command>) =>
 				await requestAudio(self, event.data);
 				break;
 			case 'SKIP':
-				skip(self, event.data);
+				await skip(self, event.data);
 				break;
 			case 'SET_NEXT':
 				await setNext(self, event.data);
@@ -77,12 +78,15 @@ self.onmessage = (event: MessageEvent<Command>) =>
 	});
 
 async function requestAudio(self: Window, data: RequestAudio) {
-	console.log(`requestAudio ${activeFile?.name}`);
-	let isFirstFrameOfSong = false;
+	console.debug(`[player] requestAudio ${activeFile?.name}`);
 	if (!activeFile) {
-		console.log(`switch track`);
-		if (!nextSongId) {
-			console.log('EOS');
+		if (!currentSongId) {
+			currentSongId = nextSongId;
+			nextSongId = null;
+		}
+		console.log(`[player] switch track ${currentSongId}`);
+		if (!currentSongId) {
+			console.log('[player] EOS');
 			self.postMessage({
 				type: 'FILLED_BUFFER',
 				buffers: silence,
@@ -90,15 +94,15 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				length: 0,
 				isBuffering: true,
 				offest: 0,
-				isFirstFrameOfSong: true
+				isLastFrameOfSong: true
 			} as FilledBuffer);
 			return;
 		}
 		try {
-			const fh = await getCachedSongFileHandle(nextSongId);
+			const fh = await getCachedSongFileHandle(currentSongId);
 			activeFile = await fh.getFile();
 		} catch {
-			console.warn('Waiting for file');
+			console.warn('[player] Waiting for file');
 			self.postMessage({
 				type: 'FILLED_BUFFER',
 				buffers: silence,
@@ -106,29 +110,28 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				length: silenceSamples,
 				isBuffering: true,
 				offest: 0,
-				isFirstFrameOfSong: false
+				isLastFrameOfSong: false
 			} as FilledBuffer);
 			return;
 		}
-		nextSongId = null;
 		activeFileOffset = 0;
 		activeFileSampleOffset = 0;
-		isFirstFrameOfSong = true;
 
 		await activeDecoder.reset();
 		await activeDecoder.ready;
 	}
 
 	const buff = await activeFile.slice(activeFileOffset, activeFileOffset + CHUNK_SIZE).bytes();
-	console.log(`[player] read ${buff.byteLength} bytes`);
+	console.debug(`[player] read ${buff.byteLength} bytes`);
 	if (buff.length === 0) {
 		activeFile = null;
+		currentSongId = null;
 		// Move to next track
 		return requestAudio(self, data);
 	}
 	activeFileOffset += buff.length;
 	const decodedAudio = await activeDecoder.decode(buff);
-	console.log(`[player] decoded ${decodedAudio.samplesDecoded} samples`);
+	console.debug(`[player] decoded ${decodedAudio.samplesDecoded} samples`);
 	if (decodedAudio.samplesDecoded === 0) {
 		// We only got partial frames, try decoding another slice
 		return requestAudio(self, data);
@@ -141,7 +144,7 @@ async function requestAudio(self: Window, data: RequestAudio) {
 		length: decodedAudio.samplesDecoded,
 		isBuffering: false,
 		offest: activeFileSampleOffset,
-		isFirstFrameOfSong: isFirstFrameOfSong
+		isLastFrameOfSong: buff.length < CHUNK_SIZE
 	} as FilledBuffer);
 	// Advance *after* sending the progress since this will now
 	// point to the *end* of the current buffer, which is the start
@@ -154,8 +157,10 @@ async function setNext(_self: Window & typeof globalThis, data: SetNext) {
 	nextSongId = data.songId ?? null;
 }
 
-function skip(_self: Window & typeof globalThis, _data: Skip) {
-	console.log(`[player] skip`);
+async function skip(_self: Window & typeof globalThis, _data: Skip) {
+	console.log(`[player] skip to ${nextSongId}`);
+	currentSongId = nextSongId;
+	nextSongId = null;
 	activeFile = null;
 }
 

@@ -44,7 +44,6 @@ export const playerPosition: Writable<{ base: number; position: number; duration
 let bufferId = 0;
 let firstValidBufferId = 0;
 let nextSampleTime = 0;
-let skipNextFirstFrame = false;
 const workerInstance = new Player();
 const DOWNLOAD_AOT = 3;
 
@@ -56,13 +55,14 @@ console.assert(numberOfChannels == 2); // The codebase assumes stereo. If this e
 
 const filledBuffers: FilledBuffer[] = [];
 
-playQueue.subscribe(async (pq) => {
+playQueue.subscribe((pq) => {
 	const start = pq.currentTrack < pq.queue.length ? pq.currentTrack : 0;
 	const end = Math.min(start + DOWNLOAD_AOT, pq.queue.length - 1);
 	for (let i = start; i < end; i++) {
 		songCache.cacheSong(pq.queue[i].id);
 	}
 	const nextSong = pq.queue.at(start + 1);
+	console.log('update next');
 	workerInstance.postMessage({
 		type: 'SET_NEXT',
 		songId: nextSong?.id
@@ -190,12 +190,6 @@ function play(index: number | null = null) {
 		index = 0;
 	}
 
-	// This is a fresh play request
-	playQueue.update((pq) => {
-		pq.currentTrack = index;
-		return pq;
-	});
-
 	const nextSong = pq.queue[index];
 
 	songCache.cacheSong(nextSong.id);
@@ -210,14 +204,14 @@ function play(index: number | null = null) {
 	} as Skip);
 
 	if (audioCtx) {
-		audioCtx.close();
+		const actx = audioCtx;
+		actx.suspend().then(() => actx.close());
 	}
 
 	audioCtx = new window.AudioContext();
 	// Invalidate all previous buffers
 	firstValidBufferId = bufferId;
 	nextSampleTime = 0;
-	skipNextFirstFrame = true;
 	audioCtx.resume();
 	playerState.set(PlayerState.Waiting);
 	playerPosition.set({ base: 0, position: 0, duration: nextSong.duration });
@@ -229,6 +223,12 @@ function play(index: number | null = null) {
 			id: ++bufferId
 		} as RequestAudio);
 	}
+
+	// This is a fresh play request
+	playQueue.update((pq) => {
+		pq.currentTrack = index;
+		return pq;
+	});
 }
 
 function queueAudioBuffer() {
@@ -269,31 +269,31 @@ function queueAudioBuffer() {
 	src.buffer = audioBuf;
 	startEvent.buffer = new AudioBuffer({ length: 1, sampleRate: sampleRate, numberOfChannels: 1 });
 	if (dataBuff.length > 0) {
-		src.onended = onBufferPlaybackEnded;
+		src.onended = () => {
+			queueAudioBuffer();
+			workerInstance.postMessage({
+				type: 'REQUEST_AUDIO',
+				id: ++bufferId
+			} as RequestAudio);
+			if (dataBuff.isLastFrameOfSong) {
+				playQueue.update((pq) => {
+					pq.currentTrack++;
+					return pq;
+				});
+				const pq = get(playQueue);
+				const song = pq.queue.at(pq.currentTrack);
+				if (song) {
+					playerPosition.set({ base: 0, position: 0, duration: song.duration });
+				}
+			}
+		};
 	} else {
 		src.onended = () => {
 			stop();
 		};
 	}
 
-	let isFirstFrameOfSong = dataBuff.isFirstFrameOfSong;
 	startEvent.onended = () => {
-		if (isFirstFrameOfSong && skipNextFirstFrame) {
-			skipNextFirstFrame = false;
-			isFirstFrameOfSong = false;
-		}
-		if (isFirstFrameOfSong) {
-			playQueue.update((pq) => {
-				pq.currentTrack++;
-				return pq;
-			});
-			const pq = get(playQueue);
-			const song = pq.queue.at(pq.currentTrack);
-			if (song) {
-				playerPosition.set({ base: 0, position: 0, duration: song.duration });
-			}
-		}
-
 		playerState.set(dataBuff.isBuffering ? PlayerState.Waiting : PlayerState.Playing);
 		playerPosition.update((p) => {
 			p.position = dataBuff.offest / sampleRate;
@@ -302,17 +302,5 @@ function queueAudioBuffer() {
 		});
 	};
 	src.start(start, 0, duration);
-	startEvent.start(start, 0, 0);
-}
-
-function onBufferPlaybackEnded(this: AudioScheduledSourceNode, _ev: Event) {
-	const self = this as AudioBufferSourceNode;
-	if (!self || !self.buffer) {
-		return;
-	}
-	queueAudioBuffer();
-	workerInstance.postMessage({
-		type: 'REQUEST_AUDIO',
-		id: ++bufferId
-	} as RequestAudio);
+	startEvent.start(start, 0);
 }
