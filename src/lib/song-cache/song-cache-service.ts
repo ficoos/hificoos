@@ -87,7 +87,6 @@ export class SongCacheService implements Service {
 			// Create this first! Otherwise we may end up in a problematic state.
 			// TOOD: Writeup some stuff at the top about how this works for posterity.
 			const progressFile = await createProgressFile(songId);
-			console.log(1)
 			try {
 				const cacheFile = await getCachedSongFileHandle(songId, true);
 				const w = await cacheFile.createWritable();
@@ -162,7 +161,6 @@ async function cleanupSongCache() {
 async function createProgressFile(songId: string): Promise<FileSystemFileHandle> {
 	const songCacheRoot = await getSongCacheDirectoryHandle();
 	return await songCacheRoot.getFileHandle(`${songId}${PROGRESS_FILE_SUFFIX}`, { create: true });
-	console.log(2)
 }
 
 async function getSongAvailability(songId: string): Promise<SongAvailability> {
