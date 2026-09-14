@@ -136,8 +136,13 @@ export const playerControl = {
 	play: play,
 	pause: pause,
 	skipNext: skipNext,
-	getCurrentTime: () => audioCtx?.currentTime ?? 0
+	getCurrentTime: () => audioCtx?.currentTime ?? 0,
+	skipPrevious: skipPrevious,
 };
+
+function skipPrevious() {
+	play(Math.max(get(playQueue).currentTrack - 1, 0));
+}
 
 function clamp(n: number, min: number, max: number): number {
 	return Math.max(Math.min(n, max), min);
