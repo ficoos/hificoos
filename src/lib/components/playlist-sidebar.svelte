@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { formatSongDuration } from '$lib/formatutils';
 	import { playerControl, playQueue } from '$lib/player-service.svelte';
-	import { SongAvailability } from '$lib/song-cache/song-cache-service';
+	import Icon from './icon.svelte';
 </script>
 
 <ul class="list rounded-box bg-base-100 shadow-md">
@@ -19,23 +19,24 @@
 				<div class="cursor-default truncate text-xs text-ellipsis opacity-60">
 					{item.display_artist} ● {item.album_name}
 				</div>
-				<div class="cursor-default truncate text-xs text-ellipsis opacity-60 inline-flex align-center">
-					<span class="material-symbols-outlined align-middle text-xs!">Schedule</span>
+				<div
+					class="align-center inline-flex cursor-default truncate text-xs text-ellipsis opacity-60"
+				>
+					<Icon class="text-sm">Schedule</Icon>
 					{formatSongDuration(item.duration)}
 				</div>
 			</div>
-			<button
-				class="btn hidden btn-square btn-ghost group-hover:flex"
-				onclick={() => playerControl.play(index)}
-			>
-				<span class="material-symbols-outlined pr-1 align-middle">play_arrow</span>
-			</button>
-			<button
-				class="btn hidden btn-square btn-ghost group-hover:flex"
-				onclick={() => playerControl.playlistRemove(index)}
-			>
-				<span class="material-symbols-outlined pr-1 align-middle">delete</span>
-			</button>
+			<div class="hidden group-hover:flex items-center">
+				<button class="btn btn-square btn-ghost" onclick={() => playerControl.play(index)}>
+					<Icon class="pr-1 text-2xl">play_arrow</Icon>
+				</button>
+				<button
+					class="btn btn-square btn-ghost"
+					onclick={() => playerControl.playlistRemove(index)}
+				>
+					<Icon class="align-middle">delete</Icon>
+				</button>
+			</div>
 		</li>
 	{/each}
 </ul>

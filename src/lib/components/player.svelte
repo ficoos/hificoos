@@ -7,6 +7,7 @@
 		playerState,
 		playQueue
 	} from '$lib/player-service.svelte';
+	import Icon from './icon.svelte';
 
 	const PLAYER_PROGRESS_ID = 'player-progress';
 	const ELEM_ID_ELAPSED_LABEL = 'label-time-elapsed';
@@ -92,19 +93,19 @@
 					playerControl.play(Math.max($playQueue.currentTrack - 1, 0));
 				}}
 			>
-				<span class="material-symbols-outlined align-middle">skip_previous</span>
+				<Icon class="text-xl">skip_previous</Icon>
 			</button>
 			{#if $playerState === PlayerState.Paused}
 				<button class="btn btn-circle btn-primary btn-xl" onclick={() => playerControl.play()}>
-					<span class="material-symbols-outlined align-middle">play_arrow</span>
+					<Icon class="text-4xl">play_arrow</Icon>
 				</button>
 			{:else}
 				<button class="btn btn-circle btn-primary btn-xl" onclick={() => playerControl.pause()}>
-					<span class="material-symbols-outlined align-middle">pause</span>
+					<Icon class="text-4xl">pause</Icon>
 				</button>
 			{/if}
 			<button class="btn btn-circle btn-neutral" onclick={() => playerControl.skipNext()}>
-				<span class="material-symbols-outlined align-middle">skip_next</span>
+					<Icon class="text-xl">skip_next</Icon>
 			</button>
 		</div>
 	</div>
