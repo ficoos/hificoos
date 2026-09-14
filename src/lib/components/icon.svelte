@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { ClassValue } from 'svelte/elements';
+	import 'material-symbols/outlined.css';
 
-	let { children, class: klass }: { children: Snippet<[]>, class?: ClassValue } = $props();
+	let { children, class: klass }: { children: Snippet<[]>; class?: ClassValue } = $props();
 </script>
 
-<span class="align-middle matrial-icon {klass ?? ''}">{@render children()}</span>
+<span class="matrial-icon align-middle {klass ?? ''}">{@render children()}</span>
 
 <style>
 	.matrial-icon {
