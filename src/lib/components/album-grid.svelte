@@ -2,7 +2,6 @@
 	import { getDAL, type AlbumItem } from '$lib/database.svelte';
 	import { currentTrack, playerControl } from '$lib/player-service.svelte';
 	import { get } from 'svelte/store';
-	import Icon from './icon.svelte';
 
 	let { albums, coverSize }: { albums: AlbumItem[]; coverSize: number } = $props();
 
@@ -31,10 +30,11 @@
 
 <div class="m-auto flex flex-wrap items-start justify-start">
 	{#each albums as album (album.id)}
-		<div class="group image-full" style={`max-width: ${coverSize}px;`}>
+		<div class="group image-full skeleton rounded-none" style={`max-width: ${coverSize}px;`}>
 			<figure>
 				<img
-					class="object-contain filter-none"
+					loading="lazy"
+					class="object-contain text-transparent filter-none"
 					style={`min-width:${coverSize}px;min-height:${coverSize}px;max-width:${coverSize}px;max-height:${coverSize}px`}
 					crossorigin=""
 					src={album.cover_art}
@@ -51,13 +51,13 @@
 					<table>
 						<tbody class="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
 							<tr>
-								<td><Icon class="pr-1 text-2xl">artist</Icon></td>
+								<td><span class="material-symbols-outlined pr-1 align-middle">artist</span></td>
 								<td>
 									<div>{album.display_artist}</div>
 								</td>
 							</tr>
 							<tr>
-								<td><Icon class="pr-1 text-2xl">album</Icon></td>
+								<td><span class="material-symbols-outlined pr-1 align-middle">album</span></td>
 								<td>
 									<div>{album.name}</div>
 								</td>
@@ -72,7 +72,7 @@
 							class="btn btn-square border border-white/80 btn-primary"
 							onclick={() => playAlbum(album)}
 						>
-							<Icon class="text-2xl">play_arrow</Icon>
+							<span class="material-symbols-outlined align-middle">play_arrow</span>
 						</button>
 					</div>
 					<div class="tooltip" data-tip="Queue">
@@ -80,7 +80,7 @@
 							class="btn btn-square border border-white/80 btn-neutral"
 							onclick={() => queueAlbum(album)}
 						>
-							<Icon class="text-2xl">playlist_play</Icon>
+							<span class="material-symbols-outlined align-middle">playlist_play</span>
 						</button>
 					</div>
 					<div class="tooltip" data-tip="Append">
@@ -88,17 +88,17 @@
 							class="btn btn-square border border-white/80 btn-neutral"
 							onclick={() => appendAlbum(album)}
 						>
-							<Icon class="text-2xl">playlist_add</Icon>
+							<span class="material-symbols-outlined align-middle">playlist_add</span>
 						</button>
 					</div>
 					<div class="flex-1"></div>
 					<div class="flex flex-col gap-1">
 						<div class="badge w-1/1 justify-start border border-white/80">
-							<Icon class="text-sm">music_note</Icon>
+							<span class="material-symbols-outlined align-middle text-sm!">music_note</span>
 							{album.song_count}
 						</div>
 						<div class="badge w-1/1 justify-start border border-white/80">
-							<Icon class="text-sm!">hourglass</Icon>
+							<span class="material-symbols-outlined align-middle text-sm!">hourglass</span>
 							{formatAlbumDuration(album.duration)}
 						</div>
 					</div>

@@ -14,6 +14,7 @@ import sqlite3InitModule, {
 } from '@sqlite.org/sqlite-wasm';
 import {
 	Kysely,
+	sql,
 	SqliteAdapter,
 	SqliteIntrospector,
 	SqliteQueryCompiler,
@@ -29,6 +30,13 @@ import {
 import { type Service, type Hub } from 'tab-election/hub';
 import { initializeDatabase, type Database } from './database-types';
 import { Client, type Credentials, type Search3Args, type SearchResult3 } from '../navidrome';
+
+export enum AlbumsOrderBy {
+	ArtistYear,
+	Title,
+	Random,
+	RecentlyAdded
+}
 
 interface DbEvents {
 	'sync-progress': SyncUpdate;
@@ -96,8 +104,9 @@ export class DatabaseService implements Service {
 			.catch((e) => console.error(e));
 	}
 
-	async albums() {
-		return this.db!.selectFrom('album')
+	async albums(orderBy: AlbumsOrderBy = AlbumsOrderBy.ArtistYear, filter: string = '') {
+		const likeFilter = `%${filter}%`;
+		let qb = this.db!.selectFrom('album')
 			.leftJoin('song', 'album_id', 'album.id')
 			.select(({ fn }) => [
 				'album.id',
@@ -110,10 +119,27 @@ export class DatabaseService implements Service {
 				fn.count<number>('song.id').as('song_count'),
 				fn.sum<number>('song.duration').as('duration')
 			])
-			.groupBy('album.id')
-			.orderBy('display_artist', 'asc')
-			.orderBy('album.sort_name', 'asc')
-			.execute();
+			.where((eb) =>
+				eb('album.display_artist', 'like', likeFilter).or('album.name', 'like', likeFilter)
+			)
+			.groupBy('album.id');
+		switch (orderBy) {
+			case AlbumsOrderBy.ArtistYear:
+				qb = qb.orderBy('display_artist', 'asc').orderBy('album.sort_name', 'asc');
+				break;
+			case AlbumsOrderBy.Title:
+				qb = qb.orderBy('album.sort_name', 'asc');
+				break;
+			case AlbumsOrderBy.RecentlyAdded:
+				qb = qb.orderBy('album.created', 'desc');
+				break;
+			case AlbumsOrderBy.Random:
+				qb = qb.orderBy(sql`random()`);
+				break;
+			// TODO: Ensure exhustiveness in TS
+		}
+
+		return qb.execute();
 	}
 
 	async albumSongs(albumId: string) {
@@ -384,7 +410,7 @@ async function syncAlbums(state: SyncState) {
 			year: item.year ?? 0,
 			display_artist: item.displayArtist,
 			cover_art: item.coverArt!,
-			created: 0 // TODO
+			created: new Date(item.created).getTime()
 		};
 	});
 }

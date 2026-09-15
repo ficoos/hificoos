@@ -1,6 +1,6 @@
 import { Spoke, type ServiceStub } from 'tab-election/hub';
 import HubWorkerUrl from '$lib/db/hub.worker?worker&url';
-import { DatabaseService, type SyncUpdate } from '$lib/db/database-service';
+import { AlbumsOrderBy, DatabaseService, type SyncUpdate } from '$lib/db/database-service';
 import { credentials } from '$lib/auth.svelte';
 import { get } from 'svelte/store';
 import { Client } from './navidrome';
@@ -64,8 +64,11 @@ export class DAL {
 		return this.db.sync(get(credentials));
 	}
 
-	albums(): Promise<AlbumItem[]> {
-		return this.db.albums();
+	albums(
+		orderBy: AlbumsOrderBy = AlbumsOrderBy.ArtistYear,
+		filter: string = ''
+	): Promise<AlbumItem[]> {
+		return this.db.albums(orderBy, filter);
 	}
 
 	async albumSongs(albumId: string): Promise<SongItem[]> {
