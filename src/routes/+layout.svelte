@@ -43,7 +43,7 @@
 </script>
 
 <svelte:head>
-	<title>HiFiCoos</title>
+	<title>HiFicoos</title>
 	<link rel="icon" href={favicon} />
 
 	{@html /* eslint-disable-line */ webManifestLink}

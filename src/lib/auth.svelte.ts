@@ -4,5 +4,4 @@ import type { Credentials } from './navidrome';
 
 const STORAGE_KEY = 'hificoos-navidrome-creds';
 
-console.log('init')
 export const credentials: Writable<Credentials> = localStorageStore(STORAGE_KEY, {username: '', password: ''});

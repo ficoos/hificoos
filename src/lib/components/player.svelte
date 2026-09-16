@@ -89,9 +89,7 @@
 		<div class="flex items-center justify-center gap-2">
 			<button
 				class="btn btn-circle btn-neutral"
-				onclick={() => {
-					playerControl.play(Math.max($playQueue.currentTrack - 1, 0));
-				}}
+				onclick={() => playerControl.skipPrevious() }
 			>
 				<Icon class="text-xl">skip_previous</Icon>
 			</button>

@@ -137,7 +137,7 @@ export const playerControl = {
 	pause: pause,
 	skipNext: skipNext,
 	getCurrentTime: () => audioCtx?.currentTime ?? 0,
-	skipPrevious: skipPrevious,
+	skipPrevious: skipPrevious
 };
 
 function skipPrevious() {

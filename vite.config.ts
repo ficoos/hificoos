@@ -35,8 +35,8 @@ export default defineConfig(({ mode }) => {
 				},
 				manifest: {
 					// includeAssets: ["favicon.ico", "apple-touch-icon.png", "assets/*"]
-					name: 'HiFiCoos',
-					short_name: 'HiFiCoos',
+					name: 'HiFicoos',
+					short_name: 'HiFicoos',
 					start_url: '/',
 					background_color: '#ffffff',
 					theme_color: '#000000',
