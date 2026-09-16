@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import { loadEnv } from 'vite';
 import { playwright } from '@vitest/browser-playwright';
 import tailwindcss from '@tailwindcss/vite';
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-cloudflare';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 
@@ -80,9 +80,7 @@ export default defineConfig(({ mode }) => {
 						filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 				},
 
-				adapter: adapter({
-					fallback: '200.html' // TODO: Figure out what should be the actual value
-				})
+				adapter: adapter()
 			})
 		],
 		server: {
