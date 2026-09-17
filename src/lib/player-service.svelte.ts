@@ -65,7 +65,11 @@ playQueue.subscribe((pq) => {
 	console.log('update next');
 	workerInstance.postMessage({
 		type: 'SET_NEXT',
-		songId: nextSong?.id
+		songId: nextSong?.id,
+		// TODO: Check if the surrounding tracks are from the same album.
+		// If they are assume we are playing an album an use album gain.
+		// If they are different songs use track gain.
+		replayGain: nextSong?.rg_album_gain
 	} as SetNext);
 });
 
@@ -212,8 +216,10 @@ function play(index: number | null = null) {
 	songCache.cacheSong(nextSong.id);
 
 	workerInstance.postMessage({
+		// TODO: The logic here is repeated above. Move to a function.
 		type: 'SET_NEXT',
-		songId: nextSong.id
+		songId: nextSong.id,
+		replayGain: nextSong.rg_album_gain
 	} as SetNext);
 
 	workerInstance.postMessage({
@@ -226,6 +232,17 @@ function play(index: number | null = null) {
 	}
 
 	audioCtx = new window.AudioContext();
+
+	// TODO: Set up compressor to prevent audio clipping
+	/*
+	const limiter = audioCtx.createDynamicsCompressor();
+	limiter.threshold.setValueAtTime(-1.0, audioCtx.currentTime); // Start limiting at -1dB
+	limiter.knee.setValueAtTime(0, audioCtx.currentTime);       // Hard knee (sharp transition)
+	limiter.ratio.setValueAtTime(20, audioCtx.currentTime);   // High ratio to act as a limiter
+	limiter.attack.setValueAtTime(0, audioCtx.currentTime);    // Instant attack
+	limiter.release.setValueAtTime(0.1, audioCtx.currentTime); // Fast release
+	*/
+
 	// Invalidate all previous buffers
 	firstValidBufferId = bufferId;
 	nextSampleTime = 0;
@@ -279,10 +296,15 @@ function queueAudioBuffer() {
 		audioBuf.copyToChannel(dataBuff.buffers[1], 1, 0);
 	}
 
+	const linearGain = Math.pow(10, dataBuff.replayGain / 20);
+	const gain = audioCtx?.createGain();
+	gain!.gain.setValueAtTime(linearGain, start);
+
 	const src = audioCtx!.createBufferSource();
 	const startEvent = audioCtx!.createBufferSource();
 	startEvent.connect(audioCtx!.destination);
-	src.connect(audioCtx!.destination);
+	gain!.connect(audioCtx!.destination);
+	src.connect(gain!);
 	src.buffer = audioBuf;
 	startEvent.buffer = new AudioBuffer({ length: 1, sampleRate: sampleRate, numberOfChannels: 1 });
 	if (dataBuff.length > 0) {

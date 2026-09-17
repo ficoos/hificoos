@@ -26,6 +26,7 @@ export interface SongItem {
 	track: number;
 	disc_number: number;
 	duration: number;
+	rg_album_gain: number;
 }
 
 export class DAL {
@@ -74,7 +75,7 @@ export class DAL {
 	async albumSongs(albumId: string): Promise<SongItem[]> {
 		const res = await this.db.albumSongs(albumId);
 		const nv = this.createNavidromeClient();
-		return res.map((item) => ({ ...item, cover_art: nv.getCoverArt(item.cover_art) }));
+		return res.map((item) => ({ ...item, cover_art: nv.getCoverArt(item.cover_art), rg_album_gain: item.rg_album_gain ?? 1.0 }));
 	}
 
 	close() {

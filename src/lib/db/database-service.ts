@@ -153,7 +153,8 @@ export class DatabaseService implements Service {
 				'song.disc_number',
 				'album.display_artist',
 				'song.title',
-				'song.duration'
+				'song.duration',
+				'song.rg_album_gain'
 			])
 			.where('album.id', '==', albumId)
 			.orderBy('song.disc_number', 'asc')

@@ -12,6 +12,8 @@ import { getCachedSongFileHandle } from './song-cache/song-cache-common';
 export interface FilledBuffer {
 	type: 'FILLED_BUFFER';
 	id: number;
+	songId?: string;
+	replayGain: number;
 	buffers: Float32Array<ArrayBuffer>[];
 	length: number;
 	offest: number; // Offset from the beginning of the song (in samples)
@@ -29,6 +31,7 @@ export interface RequestAudio {
 export interface SetNext {
 	type: 'SET_NEXT';
 	songId?: string;
+	replayGain?: number;
 }
 
 export interface Skip {
@@ -50,8 +53,12 @@ const CHUNK_SIZE = 64_000;
 let activeFile: File | null = null;
 let activeFileOffset: number = 0;
 let activeFileSampleOffset: number = 0;
-let currentSongId: string | null;
-let nextSongId: string | null;
+interface Song {
+	songId: string;
+	replayGain: number;
+}
+let currentSong: Song | null;
+let nextSong: Song | null;
 
 const silenceSamples = Math.floor(sampleRate * 0.25);
 const silence: Float32Array[] = [
@@ -80,12 +87,12 @@ self.onmessage = (event: MessageEvent<Command>) =>
 async function requestAudio(self: Window, data: RequestAudio) {
 	console.debug(`[player] requestAudio ${activeFile?.name}`);
 	if (!activeFile) {
-		if (!currentSongId) {
-			currentSongId = nextSongId;
-			nextSongId = null;
+		if (!currentSong) {
+			currentSong = nextSong;
+			nextSong = null;
 		}
-		console.log(`[player] switch track ${currentSongId}`);
-		if (!currentSongId) {
+		console.log(`[player] switch track ${currentSong}`);
+		if (!currentSong) {
 			console.log('[player] EOS');
 			self.postMessage({
 				type: 'FILLED_BUFFER',
@@ -99,7 +106,7 @@ async function requestAudio(self: Window, data: RequestAudio) {
 			return;
 		}
 		try {
-			const fh = await getCachedSongFileHandle(currentSongId);
+			const fh = await getCachedSongFileHandle(currentSong.songId);
 			activeFile = await fh.getFile();
 		} catch {
 			console.warn('[player] Waiting for file');
@@ -125,7 +132,7 @@ async function requestAudio(self: Window, data: RequestAudio) {
 	console.debug(`[player] read ${buff.byteLength} bytes`);
 	if (buff.length === 0) {
 		activeFile = null;
-		currentSongId = null;
+		currentSong = null;
 		// Move to next track
 		return requestAudio(self, data);
 	}
@@ -141,6 +148,8 @@ async function requestAudio(self: Window, data: RequestAudio) {
 		type: 'FILLED_BUFFER',
 		buffers: decodedAudio.channelData,
 		id: data.id,
+		songId: currentSong?.songId,
+		replayGain: currentSong?.replayGain ?? 1.0,
 		length: decodedAudio.samplesDecoded,
 		isBuffering: false,
 		offest: activeFileSampleOffset,
@@ -154,13 +163,13 @@ async function requestAudio(self: Window, data: RequestAudio) {
 
 async function setNext(_self: Window & typeof globalThis, data: SetNext) {
 	console.log(`[player] set next ${data.songId}`);
-	nextSongId = data.songId ?? null;
+	nextSong = data.songId ? { songId: data.songId, replayGain: data.replayGain ?? 1.0 } : null;
 }
 
 async function skip(_self: Window & typeof globalThis, _data: Skip) {
-	console.log(`[player] skip to ${nextSongId}`);
-	currentSongId = nextSongId;
-	nextSongId = null;
+	console.log(`[player] skip to ${nextSong}`);
+	currentSong = nextSong;
+	nextSong = null;
 	activeFile = null;
 }
 

@@ -30,6 +30,7 @@
 
 <div class="m-auto flex flex-wrap items-start justify-start">
 	{#each albums as album (album.id)}
+		<!--TODO: setting the background as a skeleton is problematic because it is visible if the cover image is not a perfect square-->
 		<div class="group image-full skeleton rounded-none" style={`max-width: ${coverSize}px;`}>
 			<figure>
 				<img
