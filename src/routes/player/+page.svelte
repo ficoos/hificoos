@@ -14,10 +14,10 @@
 	let albums: AlbumItem[] = $state([]);
 	let orderBy: AlbumsOrderBy = $state(AlbumsOrderBy.RecentlyAdded);
 	let filter: string = $state('');
-	let resuffleTrigger: boolean = $state(true);
+	let forceRefreshTrigger: boolean = $state(true);
 	$effect(() => {
 		// This is here to retrigger the fetch on reshuffle.
-		const _ignor = resuffleTrigger;
+		const _ignor = forceRefreshTrigger;
 		dal.albums(orderBy, filter).then((result) => {
 			const c = get(credentials);
 			let client = new Client(import.meta.env.VITE_NAVIDROME_URL, c);
@@ -31,6 +31,12 @@
 		});
 	});
 	const headerActions = getHeaderActions();
+
+	dal.db.on('sync-progress', (sp) => {
+		if (sp.isDone) {
+			forceRefreshTrigger = !forceRefreshTrigger;
+		}
+	});
 
 	$effect(() => {
 		headerActions.actions = header;
@@ -49,7 +55,7 @@
 		</select>
 	</label>
 	{#if orderBy == AlbumsOrderBy.Random}
-		<button class="btn btn-outline" onclick={() => (resuffleTrigger = !resuffleTrigger)}>
+		<button class="btn btn-outline" onclick={() => (forceRefreshTrigger = !forceRefreshTrigger)}>
 			Reshuffle
 		</button>
 	{/if}
@@ -67,6 +73,4 @@
 	</label>
 {/snippet}
 
-<div class="m-h-1/1 flex overflow-y-scroll p-2">
-	<AlbumGrid {albums} coverSize={COVER_SIZE} />
-</div>
+<AlbumGrid {albums} coverSize={COVER_SIZE} />

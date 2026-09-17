@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { credentials } from '$lib/auth.svelte';
+	import Icon from '$lib/components/icon.svelte';
 	import { Client } from '$lib/navidrome';
 	import { get } from 'svelte/store';
 	const existing = get(credentials);
@@ -12,7 +13,7 @@
 	let alertClass = $state('');
 
 	function handleSubmit() {
-        // TODO: We probably want to clear out all the caches when this changes.
+		// TODO: We probably want to clear out all the caches when this changes.
 		credentials.set({ username, password });
 		goto(resolve('/'));
 	}
@@ -60,8 +61,9 @@
 		</fieldset>
 		{#if status.length > 0}
 			<div role="alert" class="alert {alertClass}">
+				<Icon class="text-2xl">error</Icon>
 				<!-- TODO: Add icon-->
-				<span>{status}</span>
+				<span>{username.length > 0 ? status : 'Missing username'}</span>
 			</div>
 		{/if}
 		<div class="modal-action">
