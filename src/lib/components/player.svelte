@@ -7,6 +7,7 @@
 		playerState,
 		playQueue
 	} from '$lib/player-service.svelte';
+	import { get } from 'svelte/store';
 	import Icon from './icon.svelte';
 
 	const PLAYER_PROGRESS_ID = 'player-progress';
@@ -50,6 +51,28 @@
 	};
 
 	updateProgress();
+
+	window.document.addEventListener(
+		'keydown',
+		(e: Event) => {
+			const ev = e as KeyboardEvent;
+			if (ev.code !== 'Space') {
+				return;
+			}
+			var target = e.target;
+			if (target && target instanceof HTMLInputElement) {
+				return;
+			}
+			ev.preventDefault();
+			const ps = get(playerState);
+			if (ps === PlayerState.Paused) {
+				playerControl.play();
+			} else {
+				playerControl.pause();
+			}
+		},
+		false
+	);
 </script>
 
 <div class="flex w-full p-2 max-lg:flex-col">
@@ -87,10 +110,7 @@
 			<span id={ELEM_ID_DURATION_LABEL} class="cursor-default">00:00</span>
 		</div>
 		<div class="flex items-center justify-center gap-2">
-			<button
-				class="btn btn-circle btn-neutral"
-				onclick={() => playerControl.skipPrevious() }
-			>
+			<button class="btn btn-circle btn-neutral" onclick={() => playerControl.skipPrevious()}>
 				<Icon class="text-xl">skip_previous</Icon>
 			</button>
 			{#if $playerState === PlayerState.Paused}
@@ -103,7 +123,7 @@
 				</button>
 			{/if}
 			<button class="btn btn-circle btn-neutral" onclick={() => playerControl.skipNext()}>
-					<Icon class="text-xl">skip_next</Icon>
+				<Icon class="text-xl">skip_next</Icon>
 			</button>
 		</div>
 	</div>

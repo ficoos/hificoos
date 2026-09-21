@@ -101,6 +101,7 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				length: 0,
 				isBuffering: true,
 				offest: 0,
+				replayGain: 1.0,
 				isLastFrameOfSong: true
 			} as FilledBuffer);
 			return;
@@ -117,6 +118,7 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				length: silenceSamples,
 				isBuffering: true,
 				offest: 0,
+				replayGain: 1.0,
 				isLastFrameOfSong: false
 			} as FilledBuffer);
 			return;
