@@ -15,6 +15,7 @@
 	const ELEM_ID_DURATION_LABEL = 'label-time-duration';
 
 	const current = $derived($playQueue.queue.at($playQueue.currentTrack));
+
 	const updateProgress = () => {
 		// Even though usually I am all for just updating things that are
 		// idempotent. Here we check if the values on the elements have changed
@@ -46,11 +47,22 @@
 				progressElem.max = pp.duration;
 			}
 		}
-
-		window.requestAnimationFrame(updateProgress);
 	};
 
-	updateProgress();
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'visible') {
+			updateProgress();
+		}
+	});
+
+	const updateProgressLoop = () => {
+		if (document.visibilityState === 'visible') {
+			updateProgress();
+		}
+		window.requestAnimationFrame(updateProgressLoop);
+	};
+
+	updateProgressLoop();
 
 	window.document.addEventListener(
 		'keydown',
