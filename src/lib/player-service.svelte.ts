@@ -11,6 +11,7 @@ import type { SongItem } from './database.svelte';
 import { localStorageStore } from './localstore';
 import type { SongAvailability } from './song-cache/song-cache-service';
 import { songCache } from './song-cache.svelte';
+import { client } from './navidrome-service.svelte';
 
 export const currentTrack: Writable<number> = localStorageStore('hificoos-current-track', 0);
 
@@ -34,12 +35,57 @@ export const playQueue: Writable<PlayQueue> = localStorageStore('hificoos-playqu
 	queue: []
 });
 export const playerState: Writable<PlayerState> = writable(PlayerState.Paused);
-export const playerPosition: Writable<{ base: number; position: number; duration: number }> =
-	writable({
-		position: 0,
-		duration: 0,
-		base: 0
-	});
+export interface PlayerPosition {
+	base: number;
+	position: number;
+	duration: number;
+	startTime: number;
+	songId: string | null;
+}
+export const playerPosition: Writable<PlayerPosition> = writable({
+	position: 0,
+	duration: 0,
+	base: 0,
+	startTime: 0,
+	songId: null
+});
+
+function handleSongChange() {
+	let lastState = get(playerPosition);
+	return (pos: PlayerPosition) => {
+		try {
+			if (!lastState.songId) {
+				return;
+			}
+
+			if (lastState.startTime === 0) {
+				return;
+			}
+
+			if (lastState.duration === 0) {
+				return;
+			}
+
+			// Did the song actually change
+			if (lastState.songId == pos.songId && lastState.startTime == pos.startTime) {
+				return;
+			}
+
+			const duration = (Date.now() - lastState.startTime) / 1_000;
+			// TODO: This ignores pause time but it is good enough for now.
+			const playedPercent = duration / lastState.duration;
+			if (playedPercent < 0.6) {
+				return;
+			}
+
+			get(client).scrobble(lastState.songId, lastState.startTime, true);
+		} finally {
+			lastState = pos;
+		}
+	};
+}
+
+playerPosition.subscribe(handleSongChange());
 
 let bufferId = 0;
 let firstValidBufferId = 0;
@@ -180,7 +226,7 @@ function stop() {
 		pq.currentTrack = pq.queue.length;
 		return pq;
 	});
-	playerPosition.set({ base: 0, duration: 0, position: 0 });
+	playerPosition.set({ base: 0, duration: 0, position: 0, startTime: 0, songId: null });
 	playerState.set(PlayerState.Paused);
 }
 
@@ -248,7 +294,13 @@ function play(index: number | null = null) {
 	nextSampleTime = 0;
 	audioCtx.resume();
 	playerState.set(PlayerState.Waiting);
-	playerPosition.set({ base: 0, position: 0, duration: nextSong.duration });
+	playerPosition.set({
+		base: 0,
+		position: 0,
+		duration: nextSong.duration,
+		startTime: Date.now(),
+		songId: nextSong.id
+	});
 
 	// TODO: move to a const
 	for (let i = 0; i < 3; i++) {
@@ -322,7 +374,13 @@ function queueAudioBuffer() {
 				const pq = get(playQueue);
 				const song = pq.queue.at(pq.currentTrack);
 				if (song) {
-					playerPosition.set({ base: 0, position: 0, duration: song.duration });
+					playerPosition.set({
+						base: 0,
+						position: 0,
+						duration: song.duration,
+						startTime: Date.now(),
+						songId: song.id
+					});
 				}
 			}
 		};

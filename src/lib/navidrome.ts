@@ -161,6 +161,21 @@ export class Client {
 		return resp.searchResult3!;
 	}
 
+	async scrobble(
+		id: string,
+		time: number | null = null,
+		isSubmission: boolean = false
+	): Promise<void> {
+		const args: { id: string; time?: string; submission: string } = {
+			id,
+			submission: isSubmission ? 'True' : 'False'
+		};
+		if (time) {
+			args['time'] = time.toFixed().toString();
+		}
+		await this.get('scrobble', args);
+	}
+
 	stream(
 		id: string,
 		format: SongFormat = 'raw',
