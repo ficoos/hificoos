@@ -12,6 +12,7 @@ import { localStorageStore } from './localstore';
 import type { SongAvailability } from './song-cache/song-cache-service';
 import { songCache } from './song-cache.svelte';
 import { client } from './navidrome-service.svelte';
+import { settings } from './settings.svelte';
 
 export const currentTrack: Writable<number> = localStorageStore('hificoos-current-track', 0);
 
@@ -51,9 +52,15 @@ export const playerPosition: Writable<PlayerPosition> = writable({
 });
 
 function handleSongChange() {
+	const SCROBBLE_THRESHOLD = 0.6;
+
 	let lastState = get(playerPosition);
 	return (pos: PlayerPosition) => {
 		try {
+			if (!get(settings).scrobble) {
+				return;
+			}
+
 			if (!lastState.songId) {
 				return;
 			}
@@ -74,7 +81,7 @@ function handleSongChange() {
 			const duration = (Date.now() - lastState.startTime) / 1_000;
 			// TODO: This ignores pause time but it is good enough for now.
 			const playedPercent = duration / lastState.duration;
-			if (playedPercent < 0.6) {
+			if (playedPercent < SCROBBLE_THRESHOLD) {
 				return;
 			}
 

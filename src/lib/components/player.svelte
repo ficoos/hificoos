@@ -91,12 +91,17 @@
 	<div class="flex flex-1 flex-row items-center gap-2">
 		{#if current}
 			<div>
-				<img
-					crossorigin=""
-					class="size-20 min-w-20 border border-accent"
-					alt={current.album_name}
-					src={current.cover_art}
-				/>
+				<div class="tooltip tooltip-top tooltip-start">
+					<div class="tooltip-content">
+						<img crossorigin="" alt={current.album_name} src={current.cover_art} />
+					</div>
+					<img
+						crossorigin=""
+						class="size-20 min-w-20 border border-accent"
+						alt={current.album_name}
+						src={current.cover_art}
+					/>
+				</div>
 			</div>
 			<div class="flex min-w-0 flex-col">
 				<div class="cursor-default truncate text-xl text-ellipsis">

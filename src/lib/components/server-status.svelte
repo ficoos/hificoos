@@ -4,6 +4,7 @@
 	import { getDAL } from '$lib/database.svelte';
 	import type { SyncUpdate } from '$lib/db/database-service';
 	import { Client } from '$lib/navidrome';
+	import { settings } from '$lib/settings.svelte';
 	import Icon from './icon.svelte';
 
 	credentials.subscribe((creds) => {
@@ -66,5 +67,11 @@
 			>
 		</li>
 		<li><a href={resolve('/auth')}><Icon class="text-lg">settings</Icon>Settings...</a></li>
+		<li>
+			<label class="flex">
+				<span class="flex-2"><Icon class="text-lg pr-2">publish</Icon>Scrobble</span>
+				<input type="checkbox" bind:checked={$settings.scrobble} class="toggle" />
+			</label>
+		</li>
 	</ul>
 </div>
