@@ -57,19 +57,21 @@
 		<li>
 			<button
 				disabled={!syncProgress.isDone}
+				class="flex group"
 				type="button"
 				onclick={() => {
 					dal.syncDB();
 					// @ts-expect-error: Not all elements have blur
 					// but we know the active element in this case will have blur
 					document.activeElement?.blur();
-				}}><Icon class="text-lg">sync</Icon>Sync</button
+				}}><span class="flex-2"><Icon class="text-lg pr-2">sync</Icon>Sync</span><span class="loading loading-xs loading-spinner hidden group-disabled:inline-block"></span></button
 			>
+			
 		</li>
 		<li><a href={resolve('/auth')}><Icon class="text-lg">settings</Icon>Settings...</a></li>
 		<li>
 			<label class="flex">
-				<span class="flex-2"><Icon class="text-lg pr-2">publish</Icon>Scrobble</span>
+				<span class="flex-2"><Icon class="pr-2 text-lg">publish</Icon>Scrobble</span>
 				<input type="checkbox" bind:checked={$settings.scrobble} class="toggle" />
 			</label>
 		</li>
