@@ -16,9 +16,10 @@ export interface FilledBuffer {
 	replayGain: number;
 	buffers: Float32Array<ArrayBuffer>[];
 	length: number;
+	playQueueIndex?: number;
 	offest: number; // Offset from the beginning of the song (in samples)
 	isBuffering: boolean;
-	isLastFrameOfSong: boolean;
+	isFirstChunkOfSong: boolean;
 }
 
 export type PlayerEvent = FilledBuffer;
@@ -31,6 +32,7 @@ export interface RequestAudio {
 export interface SetNext {
 	type: 'SET_NEXT';
 	songId?: string;
+	playQueueIndex?: number;
 	replayGain?: number;
 }
 
@@ -56,6 +58,7 @@ let activeFileSampleOffset: number = 0;
 interface Song {
 	songId: string;
 	replayGain: number;
+	playQueueIndex: number;
 }
 let currentSong: Song | null;
 let nextSong: Song | null;
@@ -86,12 +89,13 @@ self.onmessage = (event: MessageEvent<Command>) =>
 
 async function requestAudio(self: Window, data: RequestAudio) {
 	console.debug(`[player] requestAudio ${activeFile?.name}`);
+	let isFirstFrameOfSong = false;
 	if (!activeFile) {
 		if (!currentSong) {
 			currentSong = nextSong;
 			nextSong = null;
 		}
-		console.log(`[player] switch track ${currentSong}`);
+		console.log(`[player] switch track ${currentSong?.songId}`);
 		if (!currentSong) {
 			console.log('[player] EOS');
 			self.postMessage({
@@ -102,7 +106,7 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				isBuffering: true,
 				offest: 0,
 				replayGain: 1.0,
-				isLastFrameOfSong: true
+				isFirstChunkOfSong: true,
 			} as FilledBuffer);
 			return;
 		}
@@ -119,12 +123,13 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				isBuffering: true,
 				offest: 0,
 				replayGain: 1.0,
-				isLastFrameOfSong: false
+				isFirstChunkOfSong: false
 			} as FilledBuffer);
 			return;
 		}
 		activeFileOffset = 0;
 		activeFileSampleOffset = 0;
+		isFirstFrameOfSong = true;
 
 		await activeDecoder.reset();
 		await activeDecoder.ready;
@@ -155,7 +160,8 @@ async function requestAudio(self: Window, data: RequestAudio) {
 		length: decodedAudio.samplesDecoded,
 		isBuffering: false,
 		offest: activeFileSampleOffset,
-		isLastFrameOfSong: buff.length < CHUNK_SIZE
+		isFirstChunkOfSong: isFirstFrameOfSong,
+		playQueueIndex: currentSong?.playQueueIndex,
 	} as FilledBuffer);
 	// Advance *after* sending the progress since this will now
 	// point to the *end* of the current buffer, which is the start
@@ -165,7 +171,13 @@ async function requestAudio(self: Window, data: RequestAudio) {
 
 async function setNext(_self: Window & typeof globalThis, data: SetNext) {
 	console.log(`[player] set next ${data.songId}`);
-	nextSong = data.songId ? { songId: data.songId, replayGain: data.replayGain ?? 1.0 } : null;
+	nextSong = data.songId
+		? {
+				songId: data.songId,
+				replayGain: data.replayGain ?? 1.0,
+				playQueueIndex: data.playQueueIndex ?? 0
+			}
+		: null;
 }
 
 async function skip(_self: Window & typeof globalThis, _data: Skip) {

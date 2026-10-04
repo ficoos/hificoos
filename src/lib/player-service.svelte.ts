@@ -122,7 +122,8 @@ playQueue.subscribe((pq) => {
 		// TODO: Check if the surrounding tracks are from the same album.
 		// If they are assume we are playing an album an use album gain.
 		// If they are different songs use track gain.
-		replayGain: nextSong?.rg_album_gain
+		replayGain: nextSong?.rg_album_gain,
+		playQueueIndex: start + 1,
 	} as SetNext);
 });
 
@@ -272,7 +273,8 @@ function play(index: number | null = null) {
 		// TODO: The logic here is repeated above. Move to a function.
 		type: 'SET_NEXT',
 		songId: nextSong.id,
-		replayGain: nextSong.rg_album_gain
+		replayGain: nextSong.rg_album_gain,
+		playQueueIndex: index,
 	} as SetNext);
 
 	workerInstance.postMessage({
@@ -344,7 +346,9 @@ function queueAudioBuffer() {
 	}
 	const start = nextSampleTime;
 	nextSampleTime = nextSampleTime + duration;
-	console.log(`queueing audio buffer ${dataBuff.id} with duration ${duration} at ${start}`);
+	console.log(
+		`queueing audio buffer ${dataBuff.id} with duration ${duration} at ${start}, isFirstFrame = ${dataBuff.isFirstChunkOfSong}`
+	);
 	const audioBuf = new AudioBuffer({
 		length: dataBuff.length == 0 ? 1 : dataBuff.length,
 		sampleRate: sampleRate,
@@ -373,23 +377,6 @@ function queueAudioBuffer() {
 				type: 'REQUEST_AUDIO',
 				id: ++bufferId
 			} as RequestAudio);
-			if (dataBuff.isLastFrameOfSong) {
-				playQueue.update((pq) => {
-					pq.currentTrack++;
-					return pq;
-				});
-				const pq = get(playQueue);
-				const song = pq.queue.at(pq.currentTrack);
-				if (song) {
-					playerPosition.set({
-						base: 0,
-						position: 0,
-						duration: song.duration,
-						startTime: Date.now(),
-						songId: song.id
-					});
-				}
-			}
 		};
 	} else {
 		src.onended = () => {
@@ -404,6 +391,24 @@ function queueAudioBuffer() {
 			p.base = start;
 			return p;
 		});
+		if (dataBuff.isFirstChunkOfSong && dataBuff.playQueueIndex) {
+			const idx = dataBuff.playQueueIndex
+			playQueue.update((pq) => {
+				pq.currentTrack = idx;
+				return pq;
+			});
+			const pq = get(playQueue);
+			const song = pq.queue.at(pq.currentTrack);
+			if (song) {
+				playerPosition.set({
+					base: 0,
+					position: 0,
+					duration: song.duration,
+					startTime: Date.now(),
+					songId: song.id
+				});
+			}
+		}
 	};
 	src.start(start, 0, duration);
 	startEvent.start(start, 0);
