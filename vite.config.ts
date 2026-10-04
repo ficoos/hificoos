@@ -65,12 +65,18 @@ export default defineConfig(({ mode }) => {
 					]
 				},
 				injectManifest: {
-					globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}']
+					globPatterns: [
+						'client/**/*.{js,css,ico,png,svg,webp,woff,woff2}',
+						'prerendered/**/*.{html,json}'
+					]
 				},
 				workbox: {
-					navigateFallback: '/index.html',
+					navigateFallback: '/',
 					maximumFileSizeToCacheInBytes: 4 * (1 << 20),
-					globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}']
+					globPatterns: [
+						'client/**/*.{js,css,ico,png,svg,webp,woff,woff2}',
+						'prerendered/**/*.{html,json}'
+					]
 				}
 			}),
 			tailwindcss(),
