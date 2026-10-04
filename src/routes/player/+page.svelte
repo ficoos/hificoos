@@ -26,8 +26,7 @@
 				.map((a) => {
 					a.cover_art = client.getCoverArt(a.cover_art, COVER_SIZE);
 					return a;
-				})
-				.slice(0, 30);
+				});
 		});
 	});
 	const headerActions = getHeaderActions();

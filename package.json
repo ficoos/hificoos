@@ -19,6 +19,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
+		"@humanspeak/svelte-virtual-list": "^0.5.14",
 		"@playwright/test": "^1.60.0",
 		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-cloudflare": "^7.2.9",
