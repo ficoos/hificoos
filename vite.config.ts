@@ -68,6 +68,7 @@ export default defineConfig(({ mode }) => {
 					globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}']
 				},
 				workbox: {
+					navigateFallback: '/index.html',
 					maximumFileSizeToCacheInBytes: 4 * (1 << 20),
 					globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,woff,woff2}']
 				}
