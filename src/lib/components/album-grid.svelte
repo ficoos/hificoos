@@ -32,19 +32,19 @@
 	let w = $state(1);
 	let elementsPerRow = $derived(Math.max(1, Math.floor(w / coverSize)));
 	let regroupedAlbums: AlbumItem[][] = $state([]);
-	let padding = $state(0);
+	let margin = $state(0);
 	$effect(() => {
 		const result = [];
 		for (let i = 0; i < albums.length; i += elementsPerRow) {
 			result.push(albums.slice(i, i + elementsPerRow));
 		}
 		regroupedAlbums = result;
-		padding = (w - elementsPerRow * coverSize) / 2;
+		margin = (w - elementsPerRow * coverSize) / 2;
 	});
 </script>
 
-<div bind:clientWidth={w} class="h-1/1 w-1/1" style="padding-left: {padding}px">
-	<SvelteVirtualList items={regroupedAlbums} itemKey={(row) => row.map((i) => i.id).join()}>
+<div bind:clientWidth={w} class="h-1/1" style="margin-left: {margin}px">
+	<SvelteVirtualList items={regroupedAlbums} itemKey={(row) => row.map((i) => i.id).join()} defaultEstimatedItemHeight={coverSize} loadMoreThreshold={1}>
 		{#snippet renderItem(row)}
 			<div class="flex flex-row">
 				{#each row as album, _index (album.id)}

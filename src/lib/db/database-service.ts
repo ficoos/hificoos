@@ -148,6 +148,7 @@ export class DatabaseService implements Service {
 			.select(({ ref }) => [
 				'song.id',
 				ref('album.name').as('album_name'),
+				ref('album.id').as('album_id'),
 				'album.cover_art',
 				'song.track',
 				'song.disc_number',

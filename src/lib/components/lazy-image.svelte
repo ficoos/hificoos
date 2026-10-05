@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import type { HTMLImgAttributes } from 'svelte/elements';
+
+    const EMPTY_GIF = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='
 
 	const props: {
 		src: string;
@@ -11,6 +13,7 @@
 	} = $props();
 
 	let rootElement: HTMLImageElement | undefined;
+	let realSrc = $state(EMPTY_GIF);
 
 	async function fetchImageWithBackoff(url: string, retries: number = 5, delay: number = 1_000) {
 		for (let i = 0; i < retries; i++) {
@@ -43,13 +46,13 @@
 				return;
 			}
 
-            // TODO: Handle errors
+			// TODO: Handle errors
 			fetchImageWithBackoff(props.src).then((blob) => {
 				if (!rootElement) {
 					return;
 				}
 				isLoaded = true;
-				rootElement.src = blob!;
+				realSrc = blob!;
 			});
 		}, 200);
 		observer.disconnect();
@@ -66,10 +69,14 @@
 		const observer = new IntersectionObserver(intersectionCallback, options);
 		observer.observe(rootElement!);
 	});
+    onDestroy(() => {
+        rootElement = undefined;
+    })
 </script>
 
 <img
 	bind:this={rootElement}
+	src={realSrc}
 	alt={props.alt}
 	class={`${props.class} ${isLoaded ? '' : 'skeleton'}`}
 	crossorigin={props.crossorigin}

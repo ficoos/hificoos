@@ -123,7 +123,7 @@ playQueue.subscribe((pq) => {
 		// If they are assume we are playing an album an use album gain.
 		// If they are different songs use track gain.
 		replayGain: nextSong?.rg_album_gain,
-		playQueueIndex: start + 1,
+		playQueueIndex: start + 1
 	} as SetNext);
 });
 
@@ -274,7 +274,7 @@ function play(index: number | null = null) {
 		type: 'SET_NEXT',
 		songId: nextSong.id,
 		replayGain: nextSong.rg_album_gain,
-		playQueueIndex: index,
+		playQueueIndex: index
 	} as SetNext);
 
 	workerInstance.postMessage({
@@ -392,7 +392,7 @@ function queueAudioBuffer() {
 			return p;
 		});
 		if (dataBuff.isFirstChunkOfSong && dataBuff.playQueueIndex) {
-			const idx = dataBuff.playQueueIndex
+			const idx = dataBuff.playQueueIndex;
 			playQueue.update((pq) => {
 				pq.currentTrack = idx;
 				return pq;
