@@ -110,7 +110,7 @@ const filledBuffers: FilledBuffer[] = [];
 
 playQueue.subscribe((pq) => {
 	const start = pq.currentTrack < pq.queue.length ? pq.currentTrack : 0;
-	const end = Math.min(start + DOWNLOAD_AOT, pq.queue.length - 1);
+	const end = Math.min(start + DOWNLOAD_AOT, pq.queue.length);
 	for (let i = start; i < end; i++) {
 		songCache.cacheSong(pq.queue[i].id);
 	}
