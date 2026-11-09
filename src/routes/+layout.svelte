@@ -11,7 +11,10 @@
 	import { HeaderActions } from '$lib/header-actions.svelte';
 	import { pwaInfo } from 'virtual:pwa-info';
 	import { onMount } from 'svelte';
+	import { isStorageSupported } from '$lib/storage-support';
 	console.log('PWA INFO', pwaInfo);
+
+	const storageSupported = isStorageSupported();
 
 	onMount(async () => {
 		if (pwaInfo) {
@@ -69,7 +72,18 @@
 		</div>
 	</div>
 
-	{@render children()}
+	{#await storageSupported then supported}
+		{#if supported}
+			{@render children()}
+		{:else}
+			<div class="flex flex-1 items-center justify-center p-4">
+				<div role="alert" class="alert max-w-xl alert-warning">
+					HiFicoos can't store data in this browser mode (for example, Firefox private windows).
+					Please open it in a regular window.
+				</div>
+			</div>
+		{/if}
+	{/await}
 </div>
 
 {#await import('$lib/ReloadPrompt.svelte') then { default: ReloadPrompt }}
