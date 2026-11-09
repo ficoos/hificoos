@@ -5,7 +5,7 @@
 
 <script lang="ts">
 	import './layout.css';
-	import favicon from '$lib/assets/favicon.svg';
+	import { asset } from '$app/paths';
 	import ServerStatus from '$lib/components/server-status.svelte';
 	import { getContext, setContext } from 'svelte';
 	import { HeaderActions } from '$lib/header-actions.svelte';
@@ -13,6 +13,8 @@
 	import { onMount } from 'svelte';
 	import { isStorageSupported } from '$lib/storage-support';
 	console.log('PWA INFO', pwaInfo);
+
+	const favicon = asset('/favicon.svg');
 
 	const storageSupported = isStorageSupported();
 
