@@ -6,6 +6,7 @@ export type SongFormat = 'raw' | 'opus';
 
 export interface Credentials {
 	username: string;
+	salt: string
 	password: string;
 }
 
@@ -94,15 +95,6 @@ export interface Search3Args {
 	songOffset?: number;
 }
 
-function generateRandomSalt(length: number) {
-	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-	let result = '';
-	for (let i = 0; i < length; i++) {
-		result += chars.charAt(Math.floor(Math.random() * chars.length));
-	}
-	return result;
-}
-
 export class Client {
 	private apiPath: string;
 	private credentials: Credentials;
@@ -115,7 +107,7 @@ export class Client {
 	}
 
 	private buildUrl(path: string, p: Record<string, string>) {
-		const salt = generateRandomSalt(16);
+		const salt = this.credentials.salt;
 		const token = md5(this.encoder.encode(`${this.credentials.password}${salt}`)).toHex();
 		const params = new URLSearchParams({
 			u: this.credentials.username,

@@ -12,14 +12,25 @@
 	let status = $state('');
 	let alertClass = $state('');
 
+	function generateRandomSalt(length: number) {
+		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+		let result = '';
+		for (let i = 0; i < length; i++) {
+			result += chars.charAt(Math.floor(Math.random() * chars.length));
+		}
+		return result;
+	}
+
 	function handleSubmit() {
 		// TODO: We probably want to clear out all the caches when this changes.
-		credentials.set({ username, password });
+		const salt = generateRandomSalt(8);
+		credentials.set({ username, password, salt });
 		goto(resolve('/'));
 	}
 
 	$effect(() => {
-		const client = new Client(import.meta.env.VITE_NAVIDROME_URL, { username, password });
+		const salt = generateRandomSalt(8);
+		const client = new Client(import.meta.env.VITE_NAVIDROME_URL, { username, password, salt });
 		status = 'Checking...';
 		alertClass = 'alert-natural';
 		client

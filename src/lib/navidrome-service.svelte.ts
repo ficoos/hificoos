@@ -3,7 +3,7 @@ import { credentials } from '$lib/auth.svelte';
 import { Client } from './navidrome';
 
 const wclient = writable(
-	new Client(import.meta.env.VITE_NAVIDROME_URL, { username: 'unknown', password: '' })
+	new Client(import.meta.env.VITE_NAVIDROME_URL, { username: 'unknown', salt: '', password: '' })
 );
 
 export const client: Readable<Client> = wclient;
