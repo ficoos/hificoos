@@ -9,6 +9,7 @@
 	} from '$lib/player-service.svelte';
 	import { get } from 'svelte/store';
 	import Icon from './icon.svelte';
+	import '$lib/media-session';
 
 	const PLAYER_PROGRESS_ID = 'player-progress';
 	const ELEM_ID_ELAPSED_LABEL = 'label-time-elapsed';
