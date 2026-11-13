@@ -20,3 +20,26 @@ export async function isStorageSupported(): Promise<boolean> {
 		await root?.removeEntry(probeName).catch(() => {});
 	}
 }
+
+export async function factoryReset(): Promise<void> {
+	try {
+		const resp = await fetch('/factory-reset.txt', { cache: 'no-store' });
+		if (!resp.headers.has('Clear-Site-Data')) {
+			throw new Error('Clear-Site-Data header missing');
+		}
+	} catch (e) {
+		console.warn('Clear-Site-Data reset unavailable, deleting local data directly', e);
+		localStorage.clear();
+		try {
+			const root = await navigator.storage.getDirectory();
+			for await (const name of root.keys()) {
+				await root
+					.removeEntry(name, { recursive: true })
+					.catch((err) => console.warn(`Failed to remove ${name}`, err));
+			}
+		} catch (err) {
+			console.warn('Failed to delete local storage', err);
+		}
+	}
+	location.reload();
+}
