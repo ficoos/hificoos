@@ -34,7 +34,8 @@ export class SongCacheService implements Service {
 	private hub?: Hub;
 	private nv: Client = new Client(import.meta.env.VITE_NAVIDROME_URL, {
 		username: 'anon',
-		password: 'anon'
+		password: 'anon',
+		salt: ''
 	});
 
 	async init(hub: Hub): Promise<void> {
