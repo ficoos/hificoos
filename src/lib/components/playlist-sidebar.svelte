@@ -13,7 +13,7 @@
 					: 'border-transparent'}"
 			>
 				<div>
-					<img crossorigin="" class="size-15" alt={item.album_name} src={item.cover_art} />
+					<img class="size-15" alt={item.album_name} src={item.cover_art} />
 				</div>
 				<div class="flex min-w-0 flex-col justify-center">
 					<div class="cursor-default truncate text-ellipsis">{item.title}</div>

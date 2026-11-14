@@ -94,10 +94,9 @@
 			<div>
 				<div class="tooltip tooltip-top tooltip-start">
 					<div class="tooltip-content">
-						<img crossorigin="" alt={current.album_name} src={current.cover_art} />
+						<img alt={current.album_name} src={current.cover_art} />
 					</div>
 					<img
-						crossorigin=""
 						class="size-20 min-w-20 border border-accent"
 						alt={current.album_name}
 						src={current.cover_art}

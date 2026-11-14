@@ -54,7 +54,6 @@
 							<LazyImage
 								class="object-contain text-transparent filter-none"
 								style={`min-width:${coverSize}px;min-height:${coverSize}px;max-width:${coverSize}px;max-height:${coverSize}px`}
-								crossorigin=""
 								src={album.cover_art}
 								alt={album.name}
 							/>
