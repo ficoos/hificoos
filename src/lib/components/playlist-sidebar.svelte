@@ -4,8 +4,8 @@
 	import Icon from './icon.svelte';
 </script>
 
-<div class="flex max-h-1/1 flex-col">
-	<ul class="list overflow-y-auto rounded-box bg-base-100 shadow-md">
+<div class="flex flex-col h-1/1">
+	<ul class="list overflow-y-auto rounded-box bg-base-100 shadow-md grow">
 		{#each $playQueue.queue as item, index (index)}
 			<li
 				class="group list-row border p-1 {index === $playQueue.currentTrack
