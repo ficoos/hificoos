@@ -2,7 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import type { HTMLImgAttributes } from 'svelte/elements';
 
-    const EMPTY_GIF = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='
+	const EMPTY_GIF = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
 	const props: {
 		src: string;
@@ -26,12 +26,16 @@
 					await new Promise((resolve) => setTimeout(resolve, waitTime));
 					continue;
 				}
-				if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+				if (!response.ok) {
+					throw new Error(`HTTP error! status: ${response.status}`);
+				}
 
 				const blob = await response.blob();
 				return URL.createObjectURL(blob);
 			} catch (error) {
-				if (i === retries - 1) throw error;
+				if (i === retries - 1) {
+					throw error;
+				}
 				await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, i)));
 			}
 		}
@@ -69,9 +73,9 @@
 		const observer = new IntersectionObserver(intersectionCallback, options);
 		observer.observe(rootElement!);
 	});
-    onDestroy(() => {
-        rootElement = undefined;
-    })
+	onDestroy(() => {
+		rootElement = undefined;
+	});
 </script>
 
 <img
