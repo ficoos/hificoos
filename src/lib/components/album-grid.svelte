@@ -91,7 +91,7 @@
 								</table>
 							</div>
 							<div class="flex-1 justify-center"></div>
-							<div class="flex items-center gap-1 p-2">
+							<div class="items-center gap-1 p-2 hidden group-hover:flex">
 								<div class="tooltip" data-tip="Play">
 									<button
 										class="btn btn-square border border-white/80 btn-primary"
