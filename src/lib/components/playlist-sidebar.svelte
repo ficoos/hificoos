@@ -4,8 +4,7 @@
 	import Icon from './icon.svelte';
 </script>
 
-<div class="flex flex-col max-h-1/1">
-	<button class="btn btn-neutral" onclick={() => playerControl.playlistClear()}  ><Icon>playlist_remove</Icon>Clear</button>
+<div class="flex max-h-1/1 flex-col">
 	<ul class="list overflow-y-auto rounded-box bg-base-100 shadow-md">
 		{#each $playQueue.queue as item, index (index)}
 			<li
@@ -42,4 +41,13 @@
 			</li>
 		{/each}
 	</ul>
+	<div class="join gap-2 my-2">
+		<button class="btn join-item btn-neutral" onclick={() => playerControl.playlistClear()}
+			><Icon>playlist_remove</Icon>Clear</button
+		>
+		<button
+			class="btn join-item btn-neutral"
+			onclick={() => playerControl.playlistShuffle()}><Icon>shuffle</Icon>Shuffle</button
+		>
+	</div>
 </div>

@@ -195,8 +195,37 @@ export const playerControl = {
 	pause: pause,
 	skipNext: skipNext,
 	getCurrentTime: () => audioCtx?.currentTime ?? 0,
-	skipPrevious: skipPrevious
+	skipPrevious: skipPrevious,
+	playlistShuffle: () => {
+		playQueue.update(pq => {
+			shuffle(pq.queue.length, (i: number, j: number) => {
+				const tmp = pq.queue[i]
+				pq.queue[i] = pq.queue[j]
+				pq.queue[j] = tmp;
+				if (pq.currentTrack == i) {
+					pq.currentTrack = j;
+				} else if (pq.currentTrack == j) {
+					pq.currentTrack = i;
+				}
+			})
+
+			return pq
+		})
+	}
 };
+
+function shuffle(length: number, swap: (i: number, j: number) => void) {
+	for (let i = length - 1; i >= 1; i--) {
+		const j = Math.round(Math.random() * i)
+		swap(i, j)
+	}
+	/*
+	for i from n − 1 down to 1 do
+     j ← random integer such that 0 ≤ j ≤ i
+     exchange a[j] and a[i]
+	 */
+
+}
 
 function skipPrevious() {
 	play(Math.max(get(playQueue).currentTrack - 1, 0));
