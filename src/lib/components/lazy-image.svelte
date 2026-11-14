@@ -81,4 +81,5 @@
 	class={`${props.class} ${isLoaded ? '' : 'skeleton'}`}
 	crossorigin={props.crossorigin}
 	style={props.style}
+	data-status={`${isLoaded ? 'loaded' : 'loading'}`}
 />

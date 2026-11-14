@@ -50,16 +50,16 @@
 			<div class="flex flex-row">
 				{#each row as album, _index (album.id)}
 					<div class="group image-full rounded-none" style={`max-width: ${coverSize}px;`}>
-						<figure>
+						<figure class='figure'>
 							<LazyImage
-								class="object-contain text-transparent filter-none"
+								class="peer/lazy object-contain text-transparent filter-none"
 								style={`min-width:${coverSize}px;min-height:${coverSize}px;max-width:${coverSize}px;max-height:${coverSize}px`}
 								src={album.cover_art}
 								alt={album.name}
 							/>
 						</figure>
 						<div
-							class="card-body hidden cursor-default rounded-md p-2 group-hover:flex"
+							class="card-body hidden cursor-default rounded-md p-2 group-hover:flex [.figure:has([data-status='loading'])~&]:flex"
 							style={`max-width: ${coverSize}px; min-height:${coverSize}`}
 						>
 							<div
