@@ -40,17 +40,22 @@
 		}
 		regroupedAlbums = result;
 		padding = (w - elementsPerRow * coverSize) / 2;
-		console.log(`${w} - ${elementsPerRow} * ${coverSize} = ${padding}`)
+		console.log(`${w} - ${elementsPerRow} * ${coverSize} = ${padding}`);
 	});
 </script>
 
 <div bind:clientWidth={w} class="h-1/1" style="padding-left: {padding}px">
-	<SvelteVirtualList items={regroupedAlbums} itemKey={(row) => row.map((i) => i.id).join()} defaultEstimatedItemHeight={coverSize} loadMoreThreshold={1}>
+	<SvelteVirtualList
+		items={regroupedAlbums}
+		itemKey={(row) => row.map((i) => i.id).join()}
+		defaultEstimatedItemHeight={coverSize}
+		loadMoreThreshold={1}
+	>
 		{#snippet renderItem(row)}
 			<div class="flex flex-row">
 				{#each row as album, _index (album.id)}
 					<div class="group image-full rounded-none" style={`max-width: ${coverSize}px;`}>
-						<figure class='figure'>
+						<figure class="figure">
 							<LazyImage
 								class="peer/lazy object-contain text-transparent filter-none"
 								style={`min-width:${coverSize}px;min-height:${coverSize}px;max-width:${coverSize}px;max-height:${coverSize}px`}
