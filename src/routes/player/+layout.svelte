@@ -6,10 +6,10 @@
 </script>
 
 <div class="flex flex-1 overflow-hidden">
-	<main class="flex-1 overflow-y-auto p-2">
+	<main class="flex-1 overflow-y-auto">
 		{@render children()}
 	</main>
-	<aside class="w-120 shrink-0 overflow-y-auto bg-base-200 p-4">
+	<aside class="w-120 shrink-0 bg-base-200 px-2">
 		<PlaylistSidebar />
 	</aside>
 </div>
