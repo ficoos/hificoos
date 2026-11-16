@@ -42,7 +42,6 @@ export class SongCacheService implements Service {
 		console.log('Initializing song cache leader');
 		this.hub = hub;
 		await cleanupSongCache();
-		await this.clear();
 		console.log('Song cache leader initialized');
 	}
 	close?(): void {}
@@ -137,25 +136,30 @@ export class SongCacheService implements Service {
 }
 
 async function cleanupSongCache() {
-	// Cleanup partially downloaded files
+	// Cleanup partially downloaded files. Collect names first so we don't
+	// modify the directory while iterating it.
 	const songCacheRoot = await getSongCacheDirectoryHandle();
+	const progressFiles: string[] = [];
 	for await (const entry of songCacheRoot.values()) {
-		if (entry.kind !== 'file') {
-			// Ignore
-			// TODO: This actually shouldn't happen. We probably want to clean that as well.
+		if (entry.kind === 'file' && entry.name.endsWith(PROGRESS_FILE_SUFFIX)) {
+			progressFiles.push(entry.name);
 		}
-		if (!entry.name.endsWith(PROGRESS_FILE_SUFFIX)) {
-			continue;
-		}
-		const badFile = entry.name.slice(0, -PROGRESS_FILE_SUFFIX.length);
+	}
+	for (const progressFile of progressFiles) {
+		const badFile = progressFile.slice(0, -PROGRESS_FILE_SUFFIX.length);
 		// Remove the backing file first in case we crash
-		try {
-			songCacheRoot.removeEntry(badFile);
-		} catch {
-			// Ignore
-			// TODO: make sure this is NotExists, otherwise we are in a bad state
+		await removeIfExists(songCacheRoot, badFile);
+		await removeIfExists(songCacheRoot, progressFile);
+	}
+}
+
+async function removeIfExists(dir: FileSystemDirectoryHandle, name: string) {
+	try {
+		await dir.removeEntry(name);
+	} catch (e) {
+		if ((e as DOMException).name !== 'NotFoundError') {
+			throw e;
 		}
-		songCacheRoot.removeEntry(entry.name);
 	}
 }
 
