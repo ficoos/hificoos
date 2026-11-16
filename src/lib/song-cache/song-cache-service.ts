@@ -20,6 +20,9 @@ export enum SongAvailability {
 let requestId = 0;
 
 const PROGRESS_FILE_SUFFIX = '.progress';
+// Chrome writes createWritable() data to a temporary "<name>.crswap" file and
+// swaps it in on close. A crash can leave one behind; it isn't a song.
+const CHROME_SWAP_FILE_SUFFIX = '.crswap';
 // Use at most this fraction of the storage the browser lets us have.
 const QUOTA_HEADROOM = 0.9;
 const activeDownloads = new Map<string, number>();
@@ -247,7 +250,11 @@ export class SongCacheService implements Service {
 		this.index.clear();
 		this.usedBytes = 0;
 		for await (const entry of songCacheRoot.values()) {
-			if (entry.kind !== 'file' || entry.name.endsWith(PROGRESS_FILE_SUFFIX)) {
+			if (
+				entry.kind !== 'file' ||
+				entry.name.endsWith(PROGRESS_FILE_SUFFIX) ||
+				entry.name.endsWith(CHROME_SWAP_FILE_SUFFIX)
+			) {
 				continue;
 			}
 			const file = await (entry as FileSystemFileHandle).getFile();
@@ -285,20 +292,33 @@ export class SongCacheService implements Service {
 			if (this.usedBytes <= target) {
 				break;
 			}
+			if (!this.index.has(songId)) {
+				// Removed by a concurrent eviction pass since we listed candidates.
+				continue;
+			}
 			console.log(`[song-cache] Evicting ${songId}`);
 			await this.removeSong(songCacheRoot, songId);
 		}
 	}
 
 	private async removeSong(songCacheRoot: FileSystemDirectoryHandle, songId: string) {
+		const entry = this.index.get(songId);
+		if (!entry) {
+			// Already removed, e.g. by a concurrent eviction pass.
+			return;
+		}
+		// Take it out of the index before awaiting, so concurrent eviction
+		// passes skip it and see the reduced usage.
+		this.index.delete(songId);
+		this.usedBytes -= entry.size;
 		try {
 			await removeIfExists(songCacheRoot, songId);
 		} catch (e) {
 			console.warn(`[song-cache] Failed to remove ${songId}`, e);
+			this.index.set(songId, entry);
+			this.usedBytes += entry.size;
 			return;
 		}
-		this.usedBytes -= this.index.get(songId)?.size ?? 0;
-		this.index.delete(songId);
 		this._postSongAvailability(songId, SongAvailability.Missing);
 	}
 
