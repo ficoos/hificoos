@@ -26,6 +26,8 @@
 					return AlbumsOrderBy.Title;
 				case 'random':
 					return AlbumsOrderBy.Random;
+				case 'random-artist-weighted':
+					return AlbumsOrderBy.RandomArtistWeighted
 			}
 
 			return AlbumsOrderBy.RecentlyAdded;
@@ -40,6 +42,8 @@
 					return 'title';
 				case AlbumsOrderBy.Random:
 					return 'random';
+				case AlbumsOrderBy.RandomArtistWeighted:
+					return 'random-artist-weighted'
 				default:
 					return 'recently-added';
 			}
@@ -82,9 +86,10 @@
 			<option value={AlbumsOrderBy.ArtistYear}>Artist, Year</option>
 			<option value={AlbumsOrderBy.Title}>Title</option>
 			<option value={AlbumsOrderBy.Random}>Random</option>
+			<option value={AlbumsOrderBy.RandomArtistWeighted}>Random (Artist Weighted)</option>
 		</select>
 	</label>
-	{#if $orderBy == AlbumsOrderBy.Random}
+	{#if $orderBy == AlbumsOrderBy.Random || $orderBy == AlbumsOrderBy.RandomArtistWeighted}
 		<button class="btn btn-outline" onclick={() => (forceRefreshTrigger = !forceRefreshTrigger)}>
 			Reshuffle
 		</button>

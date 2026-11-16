@@ -1,3 +1,4 @@
+import { goto } from '$app/navigation';
 import { writable, type Writable } from 'svelte/store';
 
 export function queryparam<T>(
@@ -18,9 +19,11 @@ export function queryparam<T>(
 		} else {
 			url.searchParams.delete(name);
 		}
-		window.history.replaceState({}, '', url);
+		// TODO: figure this out
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		goto(url, { replaceState: true });
 	});
-    store.set(data); // Force sync
+	store.set(data); // Force sync
 
 	return store;
 }

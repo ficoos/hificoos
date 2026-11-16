@@ -35,7 +35,8 @@ export enum AlbumsOrderBy {
 	ArtistYear,
 	Title,
 	Random,
-	RecentlyAdded
+	RecentlyAdded,
+	RandomArtistWeighted
 }
 
 interface DbEvents {
@@ -106,7 +107,7 @@ export class DatabaseService implements Service {
 
 	async albums(orderBy: AlbumsOrderBy = AlbumsOrderBy.ArtistYear, filter: string = '') {
 		const likeFilter = `%${filter}%`;
-		let qb = this.db!.selectFrom('album')
+		const qb = this.db!.selectFrom('album')
 			.leftJoin('song', 'album_id', 'album.id')
 			.select(({ fn }) => [
 				'album.id',
@@ -123,23 +124,51 @@ export class DatabaseService implements Service {
 				eb('album.display_artist', 'like', likeFilter).or('album.name', 'like', likeFilter)
 			)
 			.groupBy('album.id');
+		let finalQuery: { execute: typeof qb.execute } = qb;
 		switch (orderBy) {
 			case AlbumsOrderBy.ArtistYear:
-				qb = qb.orderBy('display_artist', 'asc').orderBy('album.sort_name', 'asc');
+				finalQuery = qb.orderBy('display_artist', 'asc').orderBy('album.sort_name', 'asc');
 				break;
 			case AlbumsOrderBy.Title:
-				qb = qb.orderBy('album.sort_name', 'asc');
+				finalQuery = qb.orderBy('album.sort_name', 'asc');
 				break;
 			case AlbumsOrderBy.RecentlyAdded:
-				qb = qb.orderBy('album.created', 'desc');
+				finalQuery = qb.orderBy('album.created', 'desc');
 				break;
 			case AlbumsOrderBy.Random:
-				qb = qb.orderBy(sql`random()`);
+				finalQuery = qb.orderBy(sql`random()`);
 				break;
+			case AlbumsOrderBy.RandomArtistWeighted:
+				{
+					const all_albums = this.db!.selectFrom(qb.as('all_albums'))
+						.selectAll()
+						.select(
+							// TODO: We group by display_artist because there could be multiple artists of an album.
+							// We need to figure this out.
+							sql<number>`row_number() OVER (PARTITION BY display_artist ORDER BY random())`.as(
+								'rn'
+							)
+						);
+					finalQuery = this.db!.selectFrom(all_albums.as('all_albums_with_random'))
+						.select([
+							'id',
+							'name',
+							'sort_name',
+							'year',
+							'cover_art',
+							'display_artist',
+							'created',
+							'song_count',
+							'duration'
+						])
+						.where('rn', '==', 1);
+				}
+				break;
+
 			// TODO: Ensure exhustiveness in TS
 		}
 
-		return qb.execute();
+		return finalQuery.execute();
 	}
 
 	async albumSongs(albumId: string) {
