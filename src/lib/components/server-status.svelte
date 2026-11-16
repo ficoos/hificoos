@@ -5,6 +5,9 @@
 	import type { SyncUpdate } from '$lib/db/database-service';
 	import { Client } from '$lib/navidrome';
 	import { settings } from '$lib/settings.svelte';
+	import { songCache } from '$lib/song-cache.svelte';
+	import type { CacheStatus } from '$lib/song-cache/song-cache-service';
+	import { formatBytes } from '$lib/formatutils';
 	import Icon from './icon.svelte';
 
 	credentials.subscribe((creds) => {
@@ -38,6 +41,15 @@
 	dal.db!.on('sync-progress', (payload) => {
 		syncProgress = payload;
 	});
+
+	let cacheStatus: CacheStatus = $state({
+		maxBytes: 0,
+		songCount: 0,
+		usedBytes: 0,
+		effectiveMaxBytes: 0
+	});
+	songCache.getStatus().then((s) => (cacheStatus = s));
+	songCache.on('status-changed', (s) => (cacheStatus = s));
 </script>
 
 <div class="dropdown dropdown-end">
@@ -51,22 +63,48 @@
 	</div>
 	<ul
 		tabindex="-1"
-		class="menu dropdown-content z-1 w-52 rounded-box bg-base-100 shadow-sm"
+		class="menu dropdown-content z-1 w-64 rounded-box bg-base-100 shadow-sm"
 		id="server-popover"
 	>
 		<li>
 			<button
 				disabled={!syncProgress.isDone}
-				class="flex group"
+				class="group flex"
 				type="button"
 				onclick={() => {
 					dal.syncDB();
 					// @ts-expect-error: Not all elements have blur
 					// but we know the active element in this case will have blur
 					document.activeElement?.blur();
-				}}><span class="flex-2"><Icon class="text-lg pr-2">sync</Icon>Sync</span><span class="loading loading-xs loading-spinner hidden group-disabled:inline-block"></span></button
+				}}
+				><span class="flex-2"><Icon class="pr-2 text-lg">sync</Icon>Sync</span><span
+					class="loading hidden loading-xs loading-spinner group-disabled:inline-block"
+				></span></button
 			>
-			
+		</li>
+		<li>
+			<div
+				class="flex flex-col items-stretch gap-1 cursor-default"
+				title={cacheStatus.effectiveMaxBytes < cacheStatus.maxBytes
+					? 'Capped by browser storage quota'
+					: undefined}
+			>
+				<span class="flex">
+					<Icon class="pr-2 text-lg">storage</Icon>Cache {formatBytes(cacheStatus.usedBytes)} / {formatBytes(
+						cacheStatus.effectiveMaxBytes
+					)}
+				</span>
+				<progress
+					class="progress w-full"
+					value={cacheStatus.usedBytes}
+					max={cacheStatus.effectiveMaxBytes}
+				></progress>
+			</div>
+		</li>
+		<li>
+			<button type="button" onclick={() => songCache.clear()}>
+				<Icon class="text-lg">delete</Icon>Clear cache
+			</button>
 		</li>
 		<li><a href={resolve('/auth')}><Icon class="text-lg">settings</Icon>Settings...</a></li>
 		<li>

@@ -1,6 +1,9 @@
 // TOOD: This file has some duplication with the service.
 export const PROGRESS_FILE_SUFFIX = '.progress';
 
+export const BYTES_PER_GIB = 1024 ** 3;
+export const DEFAULT_CACHE_SIZE_BYTES = 5 * BYTES_PER_GIB;
+
 export async function getSongCacheDirectoryHandle(): Promise<FileSystemDirectoryHandle> {
 	const opfsRoot = await navigator.storage.getDirectory();
 	return await opfsRoot.getDirectoryHandle('song-cache', { create: true });

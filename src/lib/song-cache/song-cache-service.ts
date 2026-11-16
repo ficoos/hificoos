@@ -5,7 +5,7 @@
 /// <reference lib="webworker" />
 
 import type { Hub, Service } from 'tab-election/hub';
-import { getSongCacheDirectoryHandle } from './song-cache-common';
+import { DEFAULT_CACHE_SIZE_BYTES, getSongCacheDirectoryHandle } from './song-cache-common';
 import { Client, type Credentials } from '$lib/navidrome';
 
 // Ensures that the `$service-worker` import has proper type definitions
@@ -20,18 +20,46 @@ export enum SongAvailability {
 let requestId = 0;
 
 const PROGRESS_FILE_SUFFIX = '.progress';
+// Use at most this fraction of the storage the browser lets us have.
+const QUOTA_HEADROOM = 0.9;
+// The most recently requested songs (current + prefetch window) are never
+// evicted, so we don't delete a file the player may be reading.
+// TODO: Should be dervide from AOT
+const PINNED_RECENT_SONGS = 4;
 const activeDownloads = new Map<string, number>();
+
+export interface CacheStatus {
+	usedBytes: number;
+	maxBytes: number;
+	effectiveMaxBytes: number;
+	songCount: number;
+}
+
+interface CacheEntry {
+	size: number;
+	lastUsed: number;
+}
+
 interface SongCacheEvents {
 	'availability-changed': {
 		availability: SongAvailability;
 		songId: string;
 	};
+	'status-changed': CacheStatus;
 }
 
 export class SongCacheService implements Service {
 	readonly namespace = 'hificoos-song-cache' as const;
 	readonly __events?: SongCacheEvents;
 	private hub?: Hub;
+	private index = new Map<string, CacheEntry>();
+	private usedBytes = 0;
+	private maxBytes = DEFAULT_CACHE_SIZE_BYTES;
+	private effectiveMaxBytes = DEFAULT_CACHE_SIZE_BYTES;
+	private recentSongs: string[] = [];
+	// Songs whose download failed this session. Not retried automatically, to
+	// avoid a retry loop (failure -> availability change -> queue update -> retry).
+	private failedSongs = new Set<string>();
 	private nv: Client = new Client(import.meta.env.VITE_NAVIDROME_URL, {
 		username: 'anon',
 		password: 'anon',
@@ -42,14 +70,39 @@ export class SongCacheService implements Service {
 		console.log('Initializing song cache leader');
 		this.hub = hub;
 		await cleanupSongCache();
+		await this.loadIndex();
+		// No eviction here: the configured size arrives via setMaxBytes().
+		await this.refreshEffectiveMax();
 		console.log('Song cache leader initialized');
 	}
 	close?(): void {}
 
-	async clear() {
-		const opfsRoot = await navigator.storage.getDirectory();
-		// TODO: song-cache should be a const
-		await opfsRoot.removeEntry('song-cache', { recursive: true });
+	// Removes cached songs. Songs being downloaded are always kept. Recently
+	// requested songs (which the player may be reading) are kept unless
+	// includeRecent is set, e.g. when the credentials change and every cached
+	// song belongs to the previous user/server.
+	async clear(includeRecent: boolean = false) {
+		const songCacheRoot = await getSongCacheDirectoryHandle();
+		for (const songId of [...this.index.keys()]) {
+			if (activeDownloads.has(songId) || (!includeRecent && this.recentSongs.includes(songId))) {
+				continue;
+			}
+			await this.removeSong(songCacheRoot, songId);
+		}
+		this.failedSongs.clear();
+		await this.refreshEffectiveMax();
+		this._postStatus();
+	}
+
+	async setMaxBytes(maxBytes: number) {
+		this.maxBytes = maxBytes;
+		await this.refreshEffectiveMax();
+		await this.evictToFit();
+		this._postStatus();
+	}
+
+	async getStatus(): Promise<CacheStatus> {
+		return this.status();
 	}
 
 	updateCredentials(credentials: Credentials) {
@@ -58,12 +111,38 @@ export class SongCacheService implements Service {
 	}
 
 	async cacheSong(songId: string) {
+		this.markRecent(songId);
 		switch (await getSongAvailability(songId)) {
 			case SongAvailability.Downloading:
-			case SongAvailability.Present:
 				return;
+			case SongAvailability.Present: {
+				const entry = this.index.get(songId);
+				if (entry) {
+					entry.lastUsed = Date.now();
+				}
+				return;
+			}
 		}
+		if (this.failedSongs.has(songId)) {
+			return;
+		}
+		try {
+			await this.downloadSong(songId);
+			return;
+		} catch (e) {
+			this.failedSongs.add(songId);
+			if ((e as DOMException).name !== 'QuotaExceededError') {
+				throw e;
+			}
+			console.log(`[song-cache] Quota exceeded for ${songId}, evicting and retrying`);
+			await this.refreshEffectiveMax();
+			await this.evictToFit((e as QuotaError).bytesWritten ?? 0);
+		}
+		await this.downloadSong(songId);
+		this.failedSongs.delete(songId);
+	}
 
+	private async downloadSong(songId: string) {
 		// Register
 		const rid = ++requestId;
 		if (activeDownloads.getOrInsert(songId, rid) !== rid) {
@@ -82,7 +161,7 @@ export class SongCacheService implements Service {
 			if (!response.body) {
 				throw new Error(`Empty body`);
 			}
-			
+
 			const cacheDir = await getSongCacheDirectoryHandle();
 			// Create this first! Otherwise we may end up in a problematic state.
 			// TOOD: Writeup some stuff at the top about how this works for posterity.
@@ -104,11 +183,13 @@ export class SongCacheService implements Service {
 						await w.write(value);
 						bytesWritten += value.length;
 					}
-				} catch (e) {
-					await cacheDir.removeEntry(cacheFile.name);
-					throw e;
-				} finally {
 					await w.close();
+				} catch (e) {
+					// Release the file before removing the partial download.
+					await w.abort().catch(() => {});
+					await removeIfExists(cacheDir, cacheFile.name);
+					(e as QuotaError).bytesWritten = bytesWritten;
+					throw e;
 				}
 			} finally {
 				await cacheDir.removeEntry(progressFile.name);
@@ -122,7 +203,12 @@ export class SongCacheService implements Service {
 		}
 		console.log(`[song-cache] Successful ${songId} (${bytesWritten} bytes) `);
 		// If we reached this point everything went well
+		this.index.set(songId, { size: bytesWritten, lastUsed: Date.now() });
+		this.usedBytes += bytesWritten;
 		this._postSongAvailability(songId, SongAvailability.Present);
+		await this.refreshEffectiveMax();
+		await this.evictToFit();
+		this._postStatus();
 	}
 
 	async getSongAvailability(songId: string): Promise<SongAvailability> {
@@ -133,7 +219,90 @@ export class SongCacheService implements Service {
 		// TODO: make typesafe
 		this.hub!.emit(this.namespace, 'availability-changed', { songId, availability });
 	}
+
+	private _postStatus() {
+		this.hub!.emit(this.namespace, 'status-changed', this.status());
+	}
+
+	private status(): CacheStatus {
+		return {
+			usedBytes: this.usedBytes,
+			maxBytes: this.maxBytes,
+			effectiveMaxBytes: this.effectiveMaxBytes,
+			songCount: this.index.size
+		};
+	}
+
+	private async loadIndex() {
+		const songCacheRoot = await getSongCacheDirectoryHandle();
+		this.index.clear();
+		this.usedBytes = 0;
+		for await (const entry of songCacheRoot.values()) {
+			if (entry.kind !== 'file' || entry.name.endsWith(PROGRESS_FILE_SUFFIX)) {
+				continue;
+			}
+			const file = await (entry as FileSystemFileHandle).getFile();
+			// TODO: Persist last-used times across restarts. For now every song
+			// found on disk is treated as equally old.
+			this.index.set(entry.name, { size: file.size, lastUsed: 0 });
+			this.usedBytes += file.size;
+		}
+	}
+
+	// Caps the configured size at what the browser lets us store, leaving room
+	// for everything else in this origin (e.g. the library database).
+	private async refreshEffectiveMax() {
+		const { quota, usage } = await navigator.storage.estimate();
+		if (quota === undefined || usage === undefined) {
+			this.effectiveMaxBytes = this.maxBytes;
+			return;
+		}
+		const available = Math.floor((quota - (usage - this.usedBytes)) * QUOTA_HEADROOM);
+		this.effectiveMaxBytes = Math.max(0, Math.min(this.maxBytes, available));
+	}
+
+	private async evictToFit(extraBytes: number = 0) {
+		const target = Math.min(this.effectiveMaxBytes, this.usedBytes) - extraBytes;
+		if (this.usedBytes <= target) {
+			return;
+		}
+		const candidates = [...this.index.entries()]
+			.filter(([songId]) => !this.isPinned(songId))
+			.sort(([, a], [, b]) => a.lastUsed - b.lastUsed);
+		const songCacheRoot = await getSongCacheDirectoryHandle();
+		for (const [songId] of candidates) {
+			if (this.usedBytes <= target) {
+				break;
+			}
+			console.log(`[song-cache] Evicting ${songId}`);
+			await this.removeSong(songCacheRoot, songId);
+		}
+	}
+
+	private async removeSong(songCacheRoot: FileSystemDirectoryHandle, songId: string) {
+		try {
+			await removeIfExists(songCacheRoot, songId);
+		} catch (e) {
+			console.warn(`[song-cache] Failed to remove ${songId}`, e);
+			return;
+		}
+		this.usedBytes -= this.index.get(songId)?.size ?? 0;
+		this.index.delete(songId);
+		this._postSongAvailability(songId, SongAvailability.Missing);
+	}
+
+	private isPinned(songId: string) {
+		return activeDownloads.has(songId) || this.recentSongs.includes(songId);
+	}
+
+	private markRecent(songId: string) {
+		this.recentSongs = [...this.recentSongs.filter((id) => id !== songId), songId].slice(
+			-PINNED_RECENT_SONGS
+		);
+	}
 }
+
+type QuotaError = Error & { bytesWritten?: number };
 
 async function cleanupSongCache() {
 	// Cleanup partially downloaded files. Collect names first so we don't

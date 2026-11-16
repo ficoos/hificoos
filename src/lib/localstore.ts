@@ -4,7 +4,10 @@ export function localStorageStore<T>(key: string, initialValue: T) {
 	const isBrowser = typeof window !== 'undefined';
 	const storedValue = isBrowser ? localStorage.getItem(key) : null;
 
-	const data = storedValue ? (JSON.parse(storedValue) as T) : initialValue;
+	const parsed = storedValue ? (JSON.parse(storedValue) as T) : initialValue;
+	// Fill in fields that were added to the defaults after the value was stored.
+	const data =
+		isPlainObject(initialValue) && isPlainObject(parsed) ? { ...initialValue, ...parsed } : parsed;
 	const store = writable(data);
 
 	if (isBrowser) {
@@ -14,4 +17,8 @@ export function localStorageStore<T>(key: string, initialValue: T) {
 	}
 
 	return store;
+}
+
+function isPlainObject(value: unknown): value is object {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

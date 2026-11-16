@@ -2,6 +2,7 @@ import { Spoke } from 'tab-election/hub';
 import HubWorkerUrl from '$lib/song-cache/hub.worker?worker&url';
 import { SongCacheService } from './song-cache/song-cache-service';
 import { credentials } from '$lib/auth.svelte';
+import { settings } from '$lib/settings.svelte';
 
 const spoke = new Spoke({
 	workerUrl: HubWorkerUrl,
@@ -11,3 +12,4 @@ const spoke = new Spoke({
 
 export const songCache = spoke.getService<SongCacheService>('hificoos-song-cache');
 credentials.subscribe((creds) => songCache.updateCredentials(creds));
+settings.subscribe((s) => songCache.setMaxBytes(s.cacheSizeBytes));

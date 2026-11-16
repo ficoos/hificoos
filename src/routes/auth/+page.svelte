@@ -4,6 +4,11 @@
 	import { credentials } from '$lib/auth.svelte';
 	import Icon from '$lib/components/icon.svelte';
 	import { Client } from '$lib/navidrome';
+	import { settings } from '$lib/settings.svelte';
+	import { songCache } from '$lib/song-cache.svelte';
+	import type { CacheStatus } from '$lib/song-cache/song-cache-service';
+	import { BYTES_PER_GIB } from '$lib/song-cache/song-cache-common';
+	import { formatBytes } from '$lib/formatutils';
 	import { get } from 'svelte/store';
 	const existing = get(credentials);
 
@@ -11,6 +16,9 @@
 	let password = $state(existing.password ?? '');
 	let status = $state('');
 	let alertClass = $state('');
+	let cacheSizeGiB = $state(get(settings).cacheSizeBytes / BYTES_PER_GIB);
+	let cacheStatus: CacheStatus | null = $state(null);
+	songCache.getStatus().then((s) => (cacheStatus = s));
 
 	function generateRandomSalt(length: number) {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -22,9 +30,16 @@
 	}
 
 	function handleSubmit() {
-		// TODO: We probably want to clear out all the caches when this changes.
+		// Cached songs belong to the previous user/server.
+		if (username !== existing.username || password !== existing.password) {
+			songCache.clear(true);
+		}
 		const salt = generateRandomSalt(8);
 		credentials.set({ username, password, salt });
+		if (cacheSizeGiB > 0) {
+			// A smaller size trims the cache to fit; it doesn't clear it.
+			settings.update((s) => ({ ...s, cacheSizeBytes: Math.round(cacheSizeGiB * BYTES_PER_GIB) }));
+		}
 		goto(resolve('/'));
 	}
 
@@ -48,7 +63,7 @@
 
 <div class="m-auto flex w-200 flex-1 overflow-hidden">
 	<main class="flex-1 overflow-y-auto p-2">
-		<h3 class="text-lg font-bold">Authentication Settings</h3>
+		<h3 class="text-lg font-bold">Settings</h3>
 		<p class="py-4">Please enter authentication information</p>
 		<fieldset class="fieldset">
 			<label class="label" for="name">Username</label>
@@ -69,6 +84,22 @@
 				placeholder="Password"
 				class="input w-1/1"
 			/>
+		</fieldset>
+		<fieldset class="fieldset">
+			<label class="label" for="cache-size">Cache size (GiB)</label>
+			<input
+				type="number"
+				id="cache-size"
+				min="0.5"
+				step="0.5"
+				bind:value={cacheSizeGiB}
+				class="input w-1/1"
+			/>
+			{#if cacheStatus && cacheStatus.effectiveMaxBytes < cacheStatus.maxBytes}
+				<p class="label">
+					Capped at {formatBytes(cacheStatus.effectiveMaxBytes)} by the browser's storage quota.
+				</p>
+			{/if}
 		</fieldset>
 		{#if status.length > 0}
 			<div role="alert" class="alert {alertClass}">
