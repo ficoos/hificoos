@@ -86,7 +86,7 @@
 			<option value={AlbumsOrderBy.ArtistYear}>Artist, Year</option>
 			<option value={AlbumsOrderBy.Title}>Title</option>
 			<option value={AlbumsOrderBy.Random}>Random</option>
-			<option value={AlbumsOrderBy.RandomArtistWeighted}>Random (Artist Weighted)</option>
+			<option value={AlbumsOrderBy.RandomArtistWeighted}>Random (One Album Per Artist)</option>
 		</select>
 	</label>
 	{#if $orderBy == AlbumsOrderBy.Random || $orderBy == AlbumsOrderBy.RandomArtistWeighted}
