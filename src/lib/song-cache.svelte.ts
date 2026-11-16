@@ -11,5 +11,16 @@ const spoke = new Spoke({
 });
 
 export const songCache = spoke.getService<SongCacheService>('hificoos-song-cache');
+
+// Each tab tells the song cache which songs it's using, so they aren't
+// evicted or cleared. The cache asks again when it needs fresh information
+// (new leader, cleanups).
+const tabId = crypto.randomUUID();
+let pinnedSongs: string[] = [];
+export function setPinnedSongs(songIds: string[]) {
+	pinnedSongs = songIds;
+	songCache.setPinned(tabId, songIds);
+}
+songCache.on('pins-requested', () => songCache.setPinned(tabId, pinnedSongs));
 credentials.subscribe((creds) => songCache.updateCredentials(creds));
 settings.subscribe((s) => songCache.setMaxBytes(s.cacheSizeBytes));

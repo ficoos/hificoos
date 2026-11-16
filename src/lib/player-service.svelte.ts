@@ -10,7 +10,7 @@ import {
 import type { SongItem } from './database.svelte';
 import { localStorageStore } from './localstore';
 import type { SongAvailability } from './song-cache/song-cache-service';
-import { songCache } from './song-cache.svelte';
+import { setPinnedSongs, songCache } from './song-cache.svelte';
 import { client } from './navidrome-service.svelte';
 import { settings } from './settings.svelte';
 
@@ -111,8 +111,11 @@ const filledBuffers: FilledBuffer[] = [];
 playQueue.subscribe((pq) => {
 	const start = pq.currentTrack < pq.queue.length ? pq.currentTrack : 0;
 	const end = Math.min(start + DOWNLOAD_AOT, pq.queue.length);
-	for (let i = start; i < end; i++) {
-		songCache.cacheSong(pq.queue[i].id);
+	const upcoming = pq.queue.slice(start, end).map((item) => item.id);
+	// Pin before requesting so the cache never evicts these to make room.
+	setPinnedSongs(upcoming);
+	for (const songId of upcoming) {
+		songCache.cacheSong(songId);
 	}
 	const nextSong = pq.queue.at(start + 1);
 	console.log('update next');

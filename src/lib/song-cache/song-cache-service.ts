@@ -22,10 +22,6 @@ let requestId = 0;
 const PROGRESS_FILE_SUFFIX = '.progress';
 // Use at most this fraction of the storage the browser lets us have.
 const QUOTA_HEADROOM = 0.9;
-// The most recently requested songs (current + prefetch window) are never
-// evicted, so we don't delete a file the player may be reading.
-// TODO: Should be dervide from AOT
-const PINNED_RECENT_SONGS = 4;
 const activeDownloads = new Map<string, number>();
 
 export interface CacheStatus {
@@ -46,6 +42,8 @@ interface SongCacheEvents {
 		songId: string;
 	};
 	'status-changed': CacheStatus;
+	// Asks every tab to re-send its pinned songs (see setPinned).
+	'pins-requested': Record<string, never>;
 }
 
 export class SongCacheService implements Service {
@@ -56,7 +54,10 @@ export class SongCacheService implements Service {
 	private usedBytes = 0;
 	private maxBytes = DEFAULT_CACHE_SIZE_BYTES;
 	private effectiveMaxBytes = DEFAULT_CACHE_SIZE_BYTES;
-	private recentSongs: string[] = [];
+	// Songs each tab is using (current + prefetch window), keyed by tab. The
+	// merged set is never evicted or cleared, so we don't delete a file a player
+	// may be reading. Entries of closed tabs linger until the next leader.
+	private pinnedByTab = new Map<string, Set<string>>();
 	// Songs whose download failed this session. Not retried automatically, to
 	// avoid a retry loop (failure -> availability change -> queue update -> retry).
 	private failedSongs = new Set<string>();
@@ -73,18 +74,21 @@ export class SongCacheService implements Service {
 		await this.loadIndex();
 		// No eviction here: the configured size arrives via setMaxBytes().
 		await this.refreshEffectiveMax();
+		// A new leader starts with no pins; ask the tabs for theirs.
+		this.requestPins();
 		console.log('Song cache leader initialized');
 	}
 	close?(): void {}
 
-	// Removes cached songs. Songs being downloaded are always kept. Recently
-	// requested songs (which the player may be reading) are kept unless
-	// includeRecent is set, e.g. when the credentials change and every cached
-	// song belongs to the previous user/server.
-	async clear(includeRecent: boolean = false) {
+	// Removes cached songs. Songs being downloaded are always kept. Pinned
+	// songs (which a player may be reading) are kept unless includePinned is
+	// set, e.g. when the credentials change and every cached song belongs to
+	// the previous user/server.
+	async clear(includePinned: boolean = false) {
+		this.requestPins();
 		const songCacheRoot = await getSongCacheDirectoryHandle();
 		for (const songId of [...this.index.keys()]) {
-			if (activeDownloads.has(songId) || (!includeRecent && this.recentSongs.includes(songId))) {
+			if (activeDownloads.has(songId) || (!includePinned && this.isPinned(songId))) {
 				continue;
 			}
 			await this.removeSong(songCacheRoot, songId);
@@ -101,6 +105,12 @@ export class SongCacheService implements Service {
 		this._postStatus();
 	}
 
+	// Replaces the set of songs a tab is using. Idempotent: each call sends the
+	// tab's whole set.
+	setPinned(tabId: string, songIds: string[]) {
+		this.pinnedByTab.set(tabId, new Set(songIds));
+	}
+
 	async getStatus(): Promise<CacheStatus> {
 		return this.status();
 	}
@@ -111,7 +121,6 @@ export class SongCacheService implements Service {
 	}
 
 	async cacheSong(songId: string) {
-		this.markRecent(songId);
 		switch (await getSongAvailability(songId)) {
 			case SongAvailability.Downloading:
 				return;
@@ -266,6 +275,8 @@ export class SongCacheService implements Service {
 		if (this.usedBytes <= target) {
 			return;
 		}
+		// Refresh the pins for next time; doesn't wait for the answers.
+		this.requestPins();
 		const candidates = [...this.index.entries()]
 			.filter(([songId]) => !this.isPinned(songId))
 			.sort(([, a], [, b]) => a.lastUsed - b.lastUsed);
@@ -292,13 +303,19 @@ export class SongCacheService implements Service {
 	}
 
 	private isPinned(songId: string) {
-		return activeDownloads.has(songId) || this.recentSongs.includes(songId);
+		if (activeDownloads.has(songId)) {
+			return true;
+		}
+		for (const pinned of this.pinnedByTab.values()) {
+			if (pinned.has(songId)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
-	private markRecent(songId: string) {
-		this.recentSongs = [...this.recentSongs.filter((id) => id !== songId), songId].slice(
-			-PINNED_RECENT_SONGS
-		);
+	private requestPins() {
+		this.hub!.emit(this.namespace, 'pins-requested', {});
 	}
 }
 
