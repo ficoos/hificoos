@@ -161,7 +161,8 @@ export class DatabaseService implements Service {
 							'song_count',
 							'duration'
 						])
-						.where('rn', '==', 1);
+						.where('rn', '==', 1)
+						.orderBy(sql`random()`);
 				}
 				break;
 
