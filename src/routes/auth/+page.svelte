@@ -61,7 +61,7 @@
 	});
 </script>
 
-<div class="m-auto flex w-200 flex-1 overflow-hidden">
+<div class="m-auto flex max-w-200 w-1/1 px-5 flex-1">
 	<main class="flex-1 overflow-y-auto p-2">
 		<h3 class="text-lg font-bold">Settings</h3>
 		<p class="py-4">Please enter authentication information</p>

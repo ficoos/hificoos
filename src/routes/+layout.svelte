@@ -59,15 +59,17 @@
 		<div class="flex-none">
 			<!-- Start aligned content -->
 		</div>
-		<div class="mr-10 flex-0">
-			<span class="btn cursor-default btn-ghost text-xl">
-				<img src={favicon} alt="app-icon" class="size-5" />HiFiCoos
+		<div class="lg:m-2 flex-0">
+			<span class="lg:btn cursor-default lg:btn-ghost text-xl">
+				<img src={favicon} alt="app-icon" class="lg:size-5"/><span class="max-lg:hidden"> HiFiCoos</span>
 			</span>
 		</div>
 		<div class="flex-2">
-			{#if headerActions.actions}
-				{@render headerActions.actions()}
-			{/if}
+			<div class="flex flex-row max-lg:flex-col lg:gap-10 max-lg:gap-2">
+				{#if headerActions.actions}
+					{@render headerActions.actions()}
+				{/if}
+			</div>
 		</div>
 		<div class="flex-none">
 			<ServerStatus />

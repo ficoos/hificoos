@@ -94,7 +94,7 @@
 			Reshuffle
 		</button>
 	{/if}
-	<label class="input ml-10">
+	<label class="input">
 		<Icon class="text-xl">Search</Icon>
 		<input
 			oninput={debounce((ev: Event) => {
