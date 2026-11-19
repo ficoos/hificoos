@@ -8,6 +8,7 @@
 
 import { OggOpusDecoderWebWorker } from 'ogg-opus-decoder';
 import { getCachedSongFileHandle } from './song-cache/song-cache-common';
+import { findNextFrame, geAbsolutetGranulePosition } from './ogg';
 
 export interface FilledBuffer {
 	type: 'FILLED_BUFFER';
@@ -36,11 +37,16 @@ export interface SetNext {
 	replayGain?: number;
 }
 
+export interface Seek {
+	type: 'SEEK';
+	offset: number;
+}
+
 export interface Skip {
 	type: 'SKIP';
 }
 
-export type Command = RequestAudio | SetNext | Skip;
+export type Command = RequestAudio | SetNext | Skip | Seek;
 
 const activeDecoder: OggOpusDecoderWebWorker = new OggOpusDecoderWebWorker({
 	forceStereo: true,
@@ -81,11 +87,95 @@ self.onmessage = (event: MessageEvent<Command>) =>
 			case 'SET_NEXT':
 				await setNext(self, event.data);
 				break;
+			case 'SEEK':
+				await seek(self, event.data);
+				break;
 			default:
 			// TODO: Is this really the best way to handle this? Can we enfore exhustiveness instead?
 			// Ignore
 		}
 	});
+
+function findFirstAudioFrame(buffer: Uint8Array) {
+	let s = 0;
+	let g = -1;
+	while (g === -1) {
+		if (s > buffer.length - 8) {
+			return -1;
+		}
+		s = findNextFrame(buffer, s);
+		g = Number(geAbsolutetGranulePosition(buffer, s));
+		if (g === -1) {
+			s += 13;
+		}
+	}
+
+	return s;
+}
+
+async function seek(self: Window, data: Seek) {
+	if (!activeFile) {
+		return;
+	}
+	const sampleOffset = BigInt(data.offset) * BigInt(sampleRate);
+	const size = Math.floor(activeFile.size / 2);
+	const i = size;
+	// Load the entire file to memeory, since we know it's opus it will only ever be a few megabytes.
+	// The reason we don't do it all the time is because the PCM data is much larger.
+	const buffer = await activeFile.bytes();
+	const firstFrameOffset = findFirstAudioFrame(buffer);
+	const firstSample = geAbsolutetGranulePosition(buffer, firstFrameOffset);
+	if (firstSample === BigInt(-1)) {
+		return;
+	}
+
+	if (sampleOffset <= firstSample) {
+		activeFileOffset = firstFrameOffset;
+		activeFileSampleOffset = 0;
+	} else {
+		const newOffset = realSeek(buffer, sampleOffset, i, size);
+		if (newOffset === -1) {
+			return;
+		}
+		activeFileOffset = newOffset;
+		// TODO: We are calculating this twice since this was alreaey figured out in realSeek;
+		activeFileSampleOffset = Number(geAbsolutetGranulePosition(buffer, newOffset));
+	}
+	await activeDecoder.reset();
+	await activeDecoder.ready;
+	await activeDecoder.decode(buffer.slice(0, firstFrameOffset));
+}
+
+function realSeek(
+	buffer: Uint8Array<ArrayBuffer>,
+	item: bigint,
+	offset: number,
+	size: number
+): number {
+	let frameBase = -1;
+	while (frameBase === -1 && offset < buffer.length) {
+		frameBase = findNextFrame(buffer, offset);
+	}
+
+	const pos = geAbsolutetGranulePosition(buffer, frameBase);
+	if (pos === BigInt(-1)) {
+		return realSeek(buffer, item, offset + 13, size - 13);
+	}
+	if (Math.abs(Number(pos - item)) < 0.25 * sampleRate) {
+		// We found a close enough position
+		return frameBase;
+	}
+
+	size = Math.floor(size / 2);
+
+	if (item > pos) {
+		offset += size;
+	} else {
+		offset -= size;
+	}
+
+	return realSeek(buffer, item, offset, size);
+}
 
 async function requestAudio(self: Window, data: RequestAudio) {
 	console.debug(`[player] requestAudio ${activeFile?.name}`);
@@ -106,7 +196,7 @@ async function requestAudio(self: Window, data: RequestAudio) {
 				isBuffering: true,
 				offest: 0,
 				replayGain: 1.0,
-				isFirstChunkOfSong: true,
+				isFirstChunkOfSong: true
 			} as FilledBuffer);
 			return;
 		}
@@ -161,7 +251,7 @@ async function requestAudio(self: Window, data: RequestAudio) {
 		isBuffering: false,
 		offest: activeFileSampleOffset,
 		isFirstChunkOfSong: isFirstFrameOfSong,
-		playQueueIndex: currentSong?.playQueueIndex,
+		playQueueIndex: currentSong?.playQueueIndex
 	} as FilledBuffer);
 	// Advance *after* sending the progress since this will now
 	// point to the *end* of the current buffer, which is the start

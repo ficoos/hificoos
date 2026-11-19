@@ -23,7 +23,8 @@
 		// before applying because some web layout engines will do a refresh even
 		// if nothing changed.
 		const pp = $playerPosition;
-		const pos = Math.max(pp.position + (playerControl.getCurrentTime() - pp.base), 0);
+		let pos = Math.max(pp.position + (playerControl.getCurrentTime() - pp.base), 0);
+		pos = Math.min(pos, pp.duration);
 		const elaplsedElem = document.getElementById(ELEM_ID_ELAPSED_LABEL) as HTMLSpanElement;
 		if (elaplsedElem) {
 			const elapsedText = formatSongDuration(pos);
@@ -39,9 +40,11 @@
 			}
 		}
 
-		const progressElem = document.getElementById(PLAYER_PROGRESS_ID) as HTMLProgressElement;
+		const progressElem = document.getElementById(PLAYER_PROGRESS_ID) as
+			HTMLProgressElement | HTMLInputElement;
 		if (progressElem) {
-			if (progressElem.value != pos) {
+			// @ts-expect-error: this id ad-hoc addition
+			if (progressElem.value != pos && !progressElem.isSeeking) {
 				progressElem.value = pos;
 			}
 			if (progressElem.max != pp.duration) {
@@ -118,13 +121,37 @@
 	</div>
 	<div class="flex flex-1 flex-col gap-2 p-2">
 		<div class="flex flex-row items-center gap-2">
-			<span id={ELEM_ID_ELAPSED_LABEL} class="cursor-default">00:00</span>
+			<span id={ELEM_ID_ELAPSED_LABEL} class="cursor-default text-xl font-mono">00:00</span>
 			{#if $playerState === PlayerState.Waiting}
-				<progress class="progress progress-primary"></progress>
+				<input type="range" class="range flex-1 range-primary" value="0" min="0" max="0" />
 			{:else}
-				<progress id={PLAYER_PROGRESS_ID} class="progress progress-primary" value="0"></progress>
+				<input
+					oninput={(ev) => {
+						const target = ev?.target;
+						if (!target || !(target instanceof HTMLInputElement)) {
+							return;
+						}
+
+						// @ts-expect-error: this id ad-hoc addition
+						target.isSeeking = true;
+					}}
+					onchange={(ev) => {
+						const target = ev?.target;
+						if (!target || !(target instanceof HTMLInputElement)) {
+							return;
+						}
+
+						// @ts-expect-error: this id ad-hoc addition
+						target.isSeeking = false;
+						playerControl.seek(Number(target.value));
+					}}
+					type="range"
+					class="range flex-1 range-primary"
+					id={PLAYER_PROGRESS_ID}
+					value="0"
+				/>
 			{/if}
-			<span id={ELEM_ID_DURATION_LABEL} class="cursor-default">00:00</span>
+			<span id={ELEM_ID_DURATION_LABEL} class="cursor-default text-xl font-mono">00:00</span>
 		</div>
 		<div class="flex items-center justify-center gap-2">
 			<button class="btn btn-circle btn-neutral" onclick={() => playerControl.skipPrevious()}>

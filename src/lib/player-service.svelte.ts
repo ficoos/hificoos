@@ -5,7 +5,8 @@ import {
 	type RequestAudio,
 	type FilledBuffer,
 	type SetNext,
-	type Skip
+	type Skip,
+	type Seek
 } from './player';
 import type { SongItem } from './database.svelte';
 import { localStorageStore } from './localstore';
@@ -194,40 +195,68 @@ export const playerControl = {
 			return pq;
 		});
 	},
+	seek: seek,
 	play: play,
 	pause: pause,
 	skipNext: skipNext,
 	getCurrentTime: () => audioCtx?.currentTime ?? 0,
 	skipPrevious: skipPrevious,
 	playlistShuffle: () => {
-		playQueue.update(pq => {
+		playQueue.update((pq) => {
 			shuffle(pq.queue.length, (i: number, j: number) => {
-				const tmp = pq.queue[i]
-				pq.queue[i] = pq.queue[j]
+				const tmp = pq.queue[i];
+				pq.queue[i] = pq.queue[j];
 				pq.queue[j] = tmp;
 				if (pq.currentTrack == i) {
 					pq.currentTrack = j;
 				} else if (pq.currentTrack == j) {
 					pq.currentTrack = i;
 				}
-			})
+			});
 
-			return pq
-		})
+			return pq;
+		});
 	}
 };
 
+function seek(position: number) {
+	console.log(`SEEK: ${position}`);
+	workerInstance.postMessage({
+		type: 'SEEK',
+		offset: position,
+		id: ++bufferId
+	} as Seek);
+
+	firstValidBufferId = bufferId;
+	audioCtx?.close();
+	audioCtx = new window.AudioContext();
+	audioCtx.resume();
+	playerPosition.update((pp) => {
+		pp.position = position;
+		pp.base = audioCtx?.currentTime || 0;
+		return pp;
+	});
+
+	nextSampleTime = 0;
+	// TODO: move to a const
+	for (let i = 0; i < 3; i++) {
+		workerInstance.postMessage({
+			type: 'REQUEST_AUDIO',
+			id: ++bufferId
+		} as RequestAudio);
+	}
+}
+
 function shuffle(length: number, swap: (i: number, j: number) => void) {
 	for (let i = length - 1; i >= 1; i--) {
-		const j = Math.round(Math.random() * i)
-		swap(i, j)
+		const j = Math.round(Math.random() * i);
+		swap(i, j);
 	}
 	/*
 	for i from n − 1 down to 1 do
      j ← random integer such that 0 ≤ j ≤ i
      exchange a[j] and a[i]
 	 */
-
 }
 
 function skipPrevious() {
