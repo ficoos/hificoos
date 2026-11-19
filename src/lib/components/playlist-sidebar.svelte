@@ -4,8 +4,8 @@
 	import Icon from './icon.svelte';
 </script>
 
-<div class="flex flex-col h-1/1">
-	<ul class="list overflow-y-auto rounded-box bg-base-100 shadow-md grow">
+<div class="flex h-1/1 flex-col">
+	<ul class="list grow overflow-y-auto rounded-box bg-base-100 shadow-md">
 		{#each $playQueue.queue as item, index (index)}
 			<li
 				class="group list-row border p-1 {index === $playQueue.currentTrack
@@ -20,11 +20,11 @@
 					<div class="cursor-default truncate text-xs text-ellipsis opacity-60">
 						{item.display_artist} ● {item.album_name}
 					</div>
-					<div
-						class="align-center inline-flex cursor-default truncate text-xs text-ellipsis opacity-60"
-					>
-						<Icon class="text-sm">Schedule</Icon>
-						{formatSongDuration(item.duration)}
+					<div class="cursor-default items-center opacity-60">
+						<Icon class="text-base">Schedule</Icon>
+						<span class="truncate text-xs text-ellipsis font-mono"
+							>{formatSongDuration(item.duration)}</span
+						>
 					</div>
 				</div>
 				<div class="hidden items-center group-hover:flex">
@@ -41,13 +41,12 @@
 			</li>
 		{/each}
 	</ul>
-	<div class="join gap-2 my-2">
+	<div class="join my-2 gap-2">
 		<button class="btn join-item btn-neutral" onclick={() => playerControl.playlistClear()}
 			><Icon>playlist_remove</Icon>Clear</button
 		>
-		<button
-			class="btn join-item btn-neutral"
-			onclick={() => playerControl.playlistShuffle()}><Icon>shuffle</Icon>Shuffle</button
+		<button class="btn join-item btn-neutral" onclick={() => playerControl.playlistShuffle()}
+			><Icon>shuffle</Icon>Shuffle</button
 		>
 	</div>
 </div>

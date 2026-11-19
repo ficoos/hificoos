@@ -11,7 +11,6 @@
 <style>
 	.matrial-icon {
 		font-family: 'Material Symbols Outlined';
-		line-height: 1;
 		display: inline-block;
 		white-space: nowrap;
 		word-wrap: normal;
