@@ -10,6 +10,7 @@
 	import { get } from 'svelte/store';
 	import Icon from './icon.svelte';
 	import '$lib/media-session';
+	import Marquee from './marquee.svelte';
 
 	const PLAYER_PROGRESS_ID = 'player-progress';
 	const ELEM_ID_ELAPSED_LABEL = 'label-time-elapsed';
@@ -92,7 +93,7 @@
 </script>
 
 <div class="flex w-full p-2 max-lg:flex-col">
-	<div class="flex flex-1 flex-row items-center gap-2 min-w-0">
+	<div class="flex min-w-0 flex-1 flex-row items-center gap-2">
 		{#if current}
 			<div>
 				<div class="tooltip tooltip-top tooltip-start">
@@ -106,22 +107,28 @@
 					/>
 				</div>
 			</div>
-			<div class="flex min-w-0 flex-col">
-				<div class="cursor-default truncate text-xl text-ellipsis">
-					{current.title}
-				</div>
-				<div class="cursor-default truncate text-xl text-ellipsis opacity-60">
-					{current.album_name}
-				</div>
-				<div class="cursor-default truncate text-xl text-ellipsis opacity-60">
-					{current.display_artist}
-				</div>
+			<div class="flex min-w-0 flex-1 flex-col">
+				<Marquee>
+					<div class="cursor-default truncate text-xl text-ellipsis">
+						{current.title}
+					</div>
+				</Marquee>
+				<Marquee>
+					<div class="cursor-default truncate text-xl text-ellipsis opacity-60">
+						{current.album_name}
+					</div>
+				</Marquee>
+				<Marquee>
+					<div class="cursor-default truncate text-xl text-ellipsis opacity-60">
+						{current.display_artist}
+					</div>
+				</Marquee>
 			</div>
 		{/if}
 	</div>
 	<div class="flex flex-1 flex-col gap-2 p-2">
 		<div class="flex flex-row items-center gap-2">
-			<span id={ELEM_ID_ELAPSED_LABEL} class="cursor-default text-xl font-mono">00:00</span>
+			<span id={ELEM_ID_ELAPSED_LABEL} class="cursor-default font-mono text-xl">00:00</span>
 			{#if $playerState === PlayerState.Waiting}
 				<input type="range" class="range flex-1 range-primary" value="0" min="0" max="0" />
 			{:else}
@@ -151,7 +158,7 @@
 					value="0"
 				/>
 			{/if}
-			<span id={ELEM_ID_DURATION_LABEL} class="cursor-default text-xl font-mono">00:00</span>
+			<span id={ELEM_ID_DURATION_LABEL} class="cursor-default font-mono text-xl">00:00</span>
 		</div>
 		<div class="flex items-center justify-center gap-2">
 			<button class="btn btn-circle btn-neutral" onclick={() => playerControl.skipPrevious()}>
