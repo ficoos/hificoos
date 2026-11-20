@@ -21,6 +21,12 @@
 						{item.display_artist} ● {item.album_name}
 					</div>
 					<div class="flex gap-2">
+						{#if item.disc_number > 0}
+							<div class="badge cursor-default items-center badge-soft badge-info">
+								<Icon class="text-base">album</Icon>
+								<span class="truncate font-mono text-xs text-ellipsis">{item.disc_number}</span>
+							</div>
+						{/if}
 						<div class="badge cursor-default items-center badge-soft badge-info">
 							<Icon class="text-base">music_note</Icon>
 							<span class="truncate font-mono text-xs text-ellipsis">{item.track}</span>
