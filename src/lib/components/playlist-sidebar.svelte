@@ -9,8 +9,8 @@
 		{#each $playQueue.queue as item, index (index)}
 			<li
 				class="group list-row border p-1 {index === $playQueue.currentTrack
-					? 'border-accent bg-accent-content'
-					: 'border-transparent'}"
+					? 'border-accent bg-accent-content hover:border-accent/70 hover:bg-accent-content/70'
+					: 'border-transparent hover:bg-base-300'}"
 			>
 				<div>
 					<img class="size-15" alt={item.album_name} src={item.cover_art} />
@@ -20,11 +20,17 @@
 					<div class="cursor-default truncate text-xs text-ellipsis opacity-60">
 						{item.display_artist} ● {item.album_name}
 					</div>
-					<div class="cursor-default items-center opacity-60">
-						<Icon class="text-base">Schedule</Icon>
-						<span class="truncate text-xs text-ellipsis font-mono"
-							>{formatSongDuration(item.duration)}</span
-						>
+					<div class="flex gap-2">
+						<div class="badge cursor-default items-center badge-soft badge-info">
+							<Icon class="text-base">music_note</Icon>
+							<span class="truncate font-mono text-xs text-ellipsis">{item.track}</span>
+						</div>
+						<div class="badge cursor-default items-center badge-soft badge-info">
+							<Icon class="text-base">Schedule</Icon>
+							<span class="truncate font-mono text-xs text-ellipsis"
+								>{formatSongDuration(item.duration)}</span
+							>
+						</div>
 					</div>
 				</div>
 				<div class="hidden items-center group-hover:flex">
