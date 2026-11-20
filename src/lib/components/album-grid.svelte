@@ -4,6 +4,8 @@
 	import { get } from 'svelte/store';
 	import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
 	import LazyImage from './lazy-image.svelte';
+	import { detectTextDirection } from '$lib/isrtl';
+	import Icon from './icon.svelte';
 
 	let { albums, coverSize }: { albums: AlbumItem[]; coverSize: number } = $props();
 
@@ -70,28 +72,28 @@
 							<div
 								class="justify-start rounded-md border border-white/80 bg-black/50 p-2 backdrop-blur-md"
 							>
-								<table>
+								<table
+									class="w-1/1 table-fixed"
+									style={`direction: ${detectTextDirection(album.display_artist)}`}
+								>
 									<tbody class="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">
 										<tr>
-											<td
-												><span class="material-symbols-outlined pr-1 align-middle">artist</span></td
-											>
-											<td>
-												<div>{album.display_artist}</div>
+											<td class="w-7"><Icon class="text-2xl">artist</Icon></td>
+											<td class="w-1/1">
+												<div class="ps-1">{album.display_artist}</div>
 											</td>
 										</tr>
 										<tr>
-											<td><span class="material-symbols-outlined pr-1 align-middle">album</span></td
-											>
-											<td>
-												<div>{album.name}</div>
+											<td class="w-7"><Icon class="text-2xl">album</Icon></td>
+											<td class="w1/1">
+												<div class="ps-1">{album.name}</div>
 											</td>
 										</tr>
 									</tbody>
 								</table>
 							</div>
 							<div class="flex-1 justify-center"></div>
-							<div class="items-center gap-1 p-2 hidden group-hover:flex">
+							<div class="hidden items-center gap-1 p-2 group-hover:flex">
 								<div class="tooltip" data-tip="Play">
 									<button
 										class="btn btn-square border border-white/80 btn-primary"
