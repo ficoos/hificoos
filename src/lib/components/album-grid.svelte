@@ -52,6 +52,7 @@
 		itemKey={(row) => row.map((i) => i.id).join()}
 		defaultEstimatedItemHeight={coverSize}
 		loadMoreThreshold={1}
+		bufferSize={4}
 	>
 		{#snippet renderItem(row)}
 			<div class="flex flex-row">
