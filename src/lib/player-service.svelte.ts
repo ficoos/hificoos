@@ -201,23 +201,33 @@ export const playerControl = {
 	skipNext: skipNext,
 	getCurrentTime: () => audioCtx?.currentTime ?? 0,
 	skipPrevious: skipPrevious,
+	swap: (i: number, j: number) => {
+		playQueue.update((pq) => {
+			swapPlayQueueItems(pq, i, j);
+			return pq;
+		});
+	},
 	playlistShuffle: () => {
 		playQueue.update((pq) => {
 			shuffle(pq.queue.length, (i: number, j: number) => {
-				const tmp = pq.queue[i];
-				pq.queue[i] = pq.queue[j];
-				pq.queue[j] = tmp;
-				if (pq.currentTrack == i) {
-					pq.currentTrack = j;
-				} else if (pq.currentTrack == j) {
-					pq.currentTrack = i;
-				}
+				swapPlayQueueItems(pq, i, j);
 			});
 
 			return pq;
 		});
 	}
 };
+
+function swapPlayQueueItems(pq: PlayQueue, i: number, j: number) {
+	const tmp = pq.queue[i];
+	pq.queue[i] = pq.queue[j];
+	pq.queue[j] = tmp;
+	if (pq.currentTrack == i) {
+		pq.currentTrack = j;
+	} else if (pq.currentTrack == j) {
+		pq.currentTrack = i;
+	}
+}
 
 function seek(position: number) {
 	console.log(`SEEK: ${position}`);
@@ -252,11 +262,6 @@ function shuffle(length: number, swap: (i: number, j: number) => void) {
 		const j = Math.round(Math.random() * i);
 		swap(i, j);
 	}
-	/*
-	for i from n − 1 down to 1 do
-     j ← random integer such that 0 ≤ j ≤ i
-     exchange a[j] and a[i]
-	 */
 }
 
 function skipPrevious() {

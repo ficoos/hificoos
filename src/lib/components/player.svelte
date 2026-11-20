@@ -168,6 +168,14 @@
 				<button class="btn btn-circle btn-primary btn-xl" onclick={() => playerControl.play()}>
 					<Icon class="text-4xl">play_arrow</Icon>
 				</button>
+			{:else if $playerState === PlayerState.Waiting}
+				<button
+					class="btn btn-circle btn-primary btn-xl"
+					onclick={() => playerControl.pause()}
+					aria-label="Waiting"
+				>
+					<span class="loading loading-xl loading-spinner"></span>
+				</button>
 			{:else}
 				<button class="btn btn-circle btn-primary btn-xl" onclick={() => playerControl.pause()}>
 					<Icon class="text-4xl">pause</Icon>

@@ -1,19 +1,89 @@
 <script lang="ts">
 	import { formatSongDuration } from '$lib/formatutils';
-	import { playerControl, playQueue } from '$lib/player-service.svelte';
+	import { playerControl, playQueue, type PlayQueueItem } from '$lib/player-service.svelte';
 	import Icon from './icon.svelte';
+
+	const EMPTY_GIF = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
+	let draggingItem: PlayQueueItem | null = $state(null);
+	let draggingItemId: string | null = $state(null);
+	let draggingItemIndex: number | null = $state(null);
+
+	let hoveredItemIndex: number | null = $state(null);
+
+	$effect(() => {
+		if (draggingItem === null) {
+			return;
+		}
+		if (draggingItemId === null) {
+			return;
+		}
+		if (draggingItemIndex === null) {
+			return;
+		}
+		if (hoveredItemIndex === null) {
+			// TODO: We need to handle hovering over the empty space which should just be appending
+			return;
+		}
+
+		if (draggingItemIndex === hoveredItemIndex) {
+			return;
+		}
+
+		// TODO: This will trigger caching requests every time we pass the current track
+		if (draggingItemIndex < hoveredItemIndex) {
+			for (let i = draggingItemIndex; i < hoveredItemIndex; i++) {
+				playerControl.swap(i, i + 1);
+			}
+		} else {
+			for (let i = draggingItemIndex; i > hoveredItemIndex; i--) {
+				playerControl.swap(i, i - 1);
+			}
+		}
+
+		draggingItemIndex = hoveredItemIndex;
+	});
 </script>
 
 <div class="flex h-1/1 flex-col">
 	<ul class="list grow overflow-y-auto rounded-box bg-base-100 shadow-md">
 		{#each $playQueue.queue as item, index (index)}
 			<li
-				class="group list-row border p-1 {index === $playQueue.currentTrack
+				draggable="true"
+				class="group list-row border p-1
+					{item.id === draggingItemId ? 'ms-5 ' : 'transition-[margin]'}
+					{index !== $playQueue.currentTrack && item.id === draggingItemId
+					? 'border-info'
+					: 'border-transparent'}
+					{index === $playQueue.currentTrack
 					? 'border-accent bg-accent-content hover:border-accent/70 hover:bg-accent-content/70'
-					: 'border-transparent hover:bg-base-300'}"
+					: 'hover:bg-base-300'}"
+				ondragstart={(e) => {
+					if (!(e.target instanceof HTMLLIElement)) {
+						return;
+					}
+
+					draggingItem = item;
+					draggingItemIndex = index;
+					draggingItemId = item.id;
+
+					if (e.dataTransfer) {
+						const img = document.createElement('img');
+						img.src = EMPTY_GIF;
+
+						e.dataTransfer.setDragImage(img, 0, 0);
+					}
+				}}
+				ondragover={(_e) => {
+					hoveredItemIndex = index;
+				}}
+				ondragend={(_e) => {
+					draggingItemId = null; // makes item visible
+					hoveredItemIndex = null; // prevents instant swap
+				}}
 			>
-				<div>
-					<img class="size-15" alt={item.album_name} src={item.cover_art} />
+				<div class="cursor-grab">
+					<img class="size-15" alt={item.album_name} src={item.cover_art} draggable="false" />
 				</div>
 				<div class="flex min-w-0 flex-col justify-center">
 					<div class="cursor-default truncate text-ellipsis">{item.title}</div>
