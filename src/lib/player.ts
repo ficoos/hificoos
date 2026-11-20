@@ -6,7 +6,7 @@
 // Ensures that the `$service-worker` import has proper type definitions
 /// <reference types="@sveltejs/kit" />
 
-import { OggOpusDecoderWebWorker } from 'ogg-opus-decoder';
+import { OggOpusDecoderWebWorker, type OggOpusDecodedAudio } from 'ogg-opus-decoder';
 import { getCachedSongFileHandle } from './song-cache/song-cache-common';
 import { findNextFrame, geAbsolutetGranulePosition } from './ogg';
 
@@ -227,14 +227,20 @@ async function requestAudio(self: Window, data: RequestAudio) {
 
 	const buff = await activeFile.slice(activeFileOffset, activeFileOffset + CHUNK_SIZE).bytes();
 	console.debug(`[player] read ${buff.byteLength} bytes`);
+	let decodedAudio: OggOpusDecodedAudio;
 	if (buff.length === 0) {
-		activeFile = null;
-		currentSong = null;
-		// Move to next track
-		return requestAudio(self, data);
+		decodedAudio = await activeDecoder.flush();
+		if (decodedAudio.samplesDecoded === 0) {
+			activeFile = null;
+			currentSong = null;
+			// Move to next track
+			return requestAudio(self, data);
+		}
+		console.log('[player] Flushed last samples')
+	} else {
+		activeFileOffset += buff.length;
+		decodedAudio = await activeDecoder.decode(buff);
 	}
-	activeFileOffset += buff.length;
-	const decodedAudio = await activeDecoder.decode(buff);
 	console.debug(`[player] decoded ${decodedAudio.samplesDecoded} samples`);
 	if (decodedAudio.samplesDecoded === 0) {
 		// We only got partial frames, try decoding another slice

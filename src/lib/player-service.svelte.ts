@@ -439,13 +439,12 @@ function queueAudioBuffer() {
 				id: ++bufferId
 			} as RequestAudio);
 		};
-	} else {
-		src.onended = () => {
-			stop();
-		};
 	}
 
 	startEvent.onended = () => {
+		if (dataBuff.length == 0) {
+			stop();
+		}
 		playerState.set(dataBuff.isBuffering ? PlayerState.Waiting : PlayerState.Playing);
 		playerPosition.update((p) => {
 			p.position = dataBuff.offest / sampleRate;
@@ -462,7 +461,7 @@ function queueAudioBuffer() {
 			const song = pq.queue.at(pq.currentTrack);
 			if (song) {
 				playerPosition.set({
-					base: 0,
+					base: start,
 					position: 0,
 					duration: song.duration,
 					startTime: Date.now(),

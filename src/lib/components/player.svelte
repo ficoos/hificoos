@@ -92,7 +92,7 @@
 </script>
 
 <div class="flex w-full p-2 max-lg:flex-col">
-	<div class="flex flex-1 flex-row items-center gap-2">
+	<div class="flex flex-1 flex-row items-center gap-2 min-w-0">
 		{#if current}
 			<div>
 				<div class="tooltip tooltip-top tooltip-start">
